@@ -8,6 +8,8 @@ import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.stage.Stage;
+import javafx.scene.Parent;
+
 
 import java.security.MessageDigest;
 
@@ -127,12 +129,18 @@ public class LoginController {
     private void openDashboard() {
         try {
             FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/dashboard.fxml"));
-            Scene scene = new Scene(loader.load(), 1200, 700);
+            Parent root = loader.load(); // load first!
+            DashboardController controller = loader.getController();
+
+            if (controller != null) {
+                controller.initWithNetClient(net);
+            } else {
+                throw new IllegalStateException("DashboardController not found — check fx:controller in dashboard.fxml!");
+            }
+
+            Scene scene = new Scene(root, 1200, 700);
             scene.getStylesheets().add(getClass().getResource("/dark-theme.css").toExternalForm());
 
-            // Get controller
-            DashboardController controller = loader.getController();
-            controller.initWithNetClient(net);
 
             // Create and show dashboard window
             Stage dashboardStage = new Stage();

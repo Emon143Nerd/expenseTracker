@@ -55,13 +55,17 @@ public class DashboardController implements Initializable {
     /** Called from LoginController after login succeeds */
     public void initWithNetClient(NetClient net) {
         this.net = net;
+
         try {
             this.net.send("REQUEST_SNAPSHOT");
-            this.net.setMessageHandler(this::onMessage);
         } catch (Exception e) {
-            showError("Failed to connect to server: " + e.getMessage());
+            showError("Failed to request data: " + e.getMessage());
         }
+
+        // ✅ Set the message handler
+        this.net.setMessageHandler(this::onMessage);
     }
+
 
     private void onMessage(String line) {
         if (line == null || line.isBlank()) return;
@@ -112,18 +116,31 @@ public class DashboardController implements Initializable {
     @FXML
     private void onManageGroups() {
         try {
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/group_manager.fxml"));
-            Stage stage = new Stage();
-            stage.setTitle("Groups & Members");
-            stage.setScene(new Scene(loader.load(), 420, 420));
-            GroupManagerController ctrl = loader.getController();
-            ctrl.init(net::send);
+            var url = getClass().getResource("/fxml/group_manager.fxml");
+            System.out.println("[DEBUG] group_manager.fxml path = " + url);
+
+            if (url == null) {
+                throw new RuntimeException("FXML file not found in resources. Check /fxml/group_manager.fxml path!");
+            }
+
+            FXMLLoader loader = new FXMLLoader(url);
+            var stage = new Stage();
+            stage.setTitle("Group Manager");
+            stage.setScene(new Scene(loader.load(), 420, 450));
+
+            var ctrl = loader.getController();
+            if (ctrl instanceof GroupManagerController gm) {
+                gm.init(net::send, groups);
+            }
+
             stage.show();
         } catch (Exception e) {
             e.printStackTrace();
-            showError("Failed to open Group Manager:\n" + e.getMessage());
+            new Alert(Alert.AlertType.ERROR, "Failed to open Group Manager:\n" + e.getMessage(), ButtonType.OK).showAndWait();
         }
     }
+
+
 
     @FXML
     private void onAddExpense() {

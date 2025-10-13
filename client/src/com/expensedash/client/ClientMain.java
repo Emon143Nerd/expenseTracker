@@ -13,7 +13,6 @@ public class ClientMain extends Application {
         Stage loginStage = new Stage();
         loginStage.setScene(new Scene(loginLoader.load(), 320, 180));
         loginStage.setTitle("Login");
-        loginStage.initModality(Modality.APPLICATION_MODAL);
         loginStage.showAndWait();
 
         FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/dashboard.fxml"));

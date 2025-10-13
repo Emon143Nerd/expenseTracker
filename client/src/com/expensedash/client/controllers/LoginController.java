@@ -127,28 +127,32 @@ public class LoginController {
     private void openDashboard() {
         try {
             FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/dashboard.fxml"));
-            Stage stage = new Stage();
-            stage.setTitle("Expense Dashboard");
             Scene scene = new Scene(loader.load(), 1200, 700);
             scene.getStylesheets().add(getClass().getResource("/dark-theme.css").toExternalForm());
-            stage.setScene(scene);
-            stage.setMaximized(true);
 
-            // Pass same NetClient instance
-            var controller = loader.getController();
-            if (controller instanceof DashboardController dc) {
-                dc.initWithNetClient(net);
+            // Get controller
+            DashboardController controller = loader.getController();
+            controller.initWithNetClient(net);
+
+            // Create and show dashboard window
+            Stage dashboardStage = new Stage();
+            dashboardStage.setTitle("ExpenseDash Dashboard");
+            dashboardStage.setScene(scene);
+            dashboardStage.setMaximized(true);
+            dashboardStage.show();
+
+            // ✅ Close the login window safely (only if injected)
+            if (loginButton != null && loginButton.getScene() != null) {
+                Stage loginStage = (Stage) loginButton.getScene().getWindow();
+                loginStage.close();
             }
 
-            // Close login window
-            ((Stage) loginButton.getScene().getWindow()).close();
-            stage.show();
-
         } catch (Exception e) {
-            showError("Failed to open dashboard: " + e.getMessage());
             e.printStackTrace();
+            showError("Failed to open dashboard: " + e.getMessage());
         }
     }
+
 
     private void showError(String msg) {
         Platform.runLater(() ->

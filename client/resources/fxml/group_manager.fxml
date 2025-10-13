@@ -6,35 +6,20 @@
 <VBox xmlns="http://javafx.com/javafx/21"
       xmlns:fx="http://javafx.com/fxml/1"
       fx:controller="com.expensedash.client.controllers.GroupManagerController"
-      spacing="12"
-      style="-fx-background-color: #f8fdfc;">
-    <padding>
-        <Insets top="16" right="16" bottom="16" left="16"/>
-    </padding>
-
+      spacing="10" style="-fx-padding: 12;">
     <children>
-        <Label text="Group Manager"
-               style="-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #004d40;"/>
-
-        <Separator/>
-
-        <Label text="Create New Group" style="-fx-font-weight: bold;"/>
-        <TextField fx:id="groupName" promptText="Enter group name"/>
-        <TextField fx:id="groupCategory" promptText="Category (optional)"/>
-        <Button text="Create Group" onAction="#onCreate"
-                style="-fx-background-color: #00796b; -fx-text-fill: white;"/>
+        <Label text="Create Group" style="-fx-font-weight: bold;"/>
+        <TextField fx:id="groupName" promptText="Group name"/>
+        <TextField fx:id="groupCategory" promptText="Category"/>
+        <Button text="Create Group" onAction="#onCreate"/>
 
         <Separator/>
 
         <Label text="Add Member" style="-fx-font-weight: bold;"/>
         <TextField fx:id="memberName" promptText="Member name"/>
-        <TextField fx:id="memberGroupId" promptText="Group ID (number)"/>
-        <Button text="Add Member" onAction="#onAddMember"
-                style="-fx-background-color: #009688; -fx-text-fill: white;"/>
+        <ComboBox fx:id="groupSelector" promptText="Select group"/>
+        <Button text="Add Member" onAction="#onAddMember"/>
 
-        <Separator/>
-
-        <Button text="Close" onAction="#onClose"
-                style="-fx-background-color: #c62828; -fx-text-fill: white;"/>
+        <Button text="Close" onAction="#onClose"/>
     </children>
 </VBox>

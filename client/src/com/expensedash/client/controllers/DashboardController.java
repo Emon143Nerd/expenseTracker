@@ -16,8 +16,13 @@ import javafx.stage.Stage;
 import java.net.URL;
 import java.util.*;
 
+/**
+ * DashboardController — main controller for the ExpenseDash dashboard.
+ * Handles data display, user actions, and server communication.
+ */
 public class DashboardController implements Initializable {
 
+    // --- UI Elements (FXML bindings) ---
     @FXML private Label welcomeLabel;
     @FXML private TextField groupSearch;
     @FXML private ListView<String> groupList;
@@ -30,6 +35,7 @@ public class DashboardController implements Initializable {
     @FXML private TableColumn<BalanceRow, String> colStatus;
     @FXML private PieChart pieChart;
 
+    // --- Network and Data Structures ---
     private NetClient net;
     private final Map<Integer, String> members = new HashMap<>();
     private final Map<Integer, String> groups = new HashMap<>();
@@ -37,6 +43,7 @@ public class DashboardController implements Initializable {
     private final Map<Integer, Map<Integer, Double>> splits = new HashMap<>();
     private int selectedGroup = 1;
 
+    // --- Initialization ---
     @Override
     public void initialize(URL url, ResourceBundle rb) {
         welcomeLabel.setText("Welcome, " + Session.getCurrentUser());
@@ -44,6 +51,7 @@ public class DashboardController implements Initializable {
         colAmount.setCellValueFactory(c -> c.getValue().amountProperty());
         colStatus.setCellValueFactory(c -> c.getValue().statusProperty());
 
+        // Listen for group selection changes
         groupList.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
                 selectedGroup = groupNameToId(newVal);
@@ -62,11 +70,11 @@ public class DashboardController implements Initializable {
             showError("Failed to request data: " + e.getMessage());
         }
 
-        // ✅ Set the message handler
+        // Listen for messages from the server
         this.net.setMessageHandler(this::onMessage);
     }
 
-
+    // --- Message Handling from Server ---
     private void onMessage(String line) {
         if (line == null || line.isBlank()) return;
 
@@ -107,41 +115,47 @@ public class DashboardController implements Initializable {
             }
             Platform.runLater(this::refreshUI);
         } catch (Exception e) {
-            System.err.println("[Dashboard] Failed to parse: " + line + " → " + e);
+            System.err.println("[Dashboard] Failed to parse message: " + line + " → " + e);
         }
     }
 
-    // --- BUTTON HANDLERS ---
+    // --- Button Handlers ---
 
+    /** Opens the Group Manager dialog */
     @FXML
     private void onManageGroups() {
         try {
             var url = getClass().getResource("/fxml/group_manager.fxml");
-            System.out.println("[DEBUG] group_manager.fxml path = " + url);
-
-            if (url == null) {
-                throw new RuntimeException("FXML file not found in resources. Check /fxml/group_manager.fxml path!");
-            }
+            System.out.println("[DEBUG] group_manager.fxml URL = " + url);
 
             FXMLLoader loader = new FXMLLoader(url);
-            var stage = new Stage();
-            stage.setTitle("Group Manager");
-            stage.setScene(new Scene(loader.load(), 420, 450));
+            Stage stage = new Stage();
+            stage.setTitle("Groups & Members");
+            stage.setScene(new Scene(loader.load(), 420, 420));
 
-            var ctrl = loader.getController();
-            if (ctrl instanceof GroupManagerController gm) {
-                gm.init(net::send, groups);
-            }
+            GroupManagerController controller = loader.getController();
+            if (controller == null)
+                throw new IllegalStateException("GroupManagerController not loaded from FXML");
+
+            // ✅ Add this:
+            System.out.println("[DEBUG] net = " + net);
+            System.out.println("[DEBUG] groups = " + groups);
+
+            controller.init(net::send, groups); // line 145 (NPE happens here)
 
             stage.show();
+
         } catch (Exception e) {
             e.printStackTrace();
-            new Alert(Alert.AlertType.ERROR, "Failed to open Group Manager:\n" + e.getMessage(), ButtonType.OK).showAndWait();
+            new Alert(Alert.AlertType.ERROR,
+                    "Failed to open Group Manager:\n" + e.getMessage(),
+                    ButtonType.OK).showAndWait();
         }
     }
 
 
 
+    /** Adds a new expense */
     @FXML
     private void onAddExpense() {
         TextInputDialog dialog = new TextInputDialog("12.50");
@@ -155,6 +169,7 @@ public class DashboardController implements Initializable {
                     showError("Please enter a valid positive amount.");
                     return;
                 }
+
                 List<Integer> mids = new ArrayList<>(members.keySet());
                 if (mids.isEmpty()) {
                     showError("No members found in this group.");
@@ -180,12 +195,14 @@ public class DashboardController implements Initializable {
         });
     }
 
+    /** Settles all balances */
     @FXML
     private void onSettleBalances() {
         Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
                 "Settle all balances for this group?",
                 ButtonType.YES, ButtonType.NO);
         confirm.setHeaderText("Settle Balances");
+
         confirm.showAndWait().ifPresent(btn -> {
             if (btn == ButtonType.YES) {
                 net.send("SETTLE|" + selectedGroup);
@@ -194,6 +211,7 @@ public class DashboardController implements Initializable {
         });
     }
 
+    /** Shows the expense history */
     @FXML
     private void onViewHistory() {
         try {
@@ -202,10 +220,9 @@ public class DashboardController implements Initializable {
             stage.setTitle("History");
             stage.setScene(new Scene(loader.load(), 520, 420));
 
-            // Optional: populate the history table
             var historyCtrl = loader.getController();
             if (historyCtrl instanceof com.expensedash.client.controllers.HistoryController hc) {
-                var rows = new java.util.ArrayList<com.expensedash.client.controllers.HistoryController.Row>();
+                var rows = new ArrayList<com.expensedash.client.controllers.HistoryController.Row>();
                 for (Expense e : expenses.values()) {
                     if (e.groupId != selectedGroup) continue;
                     rows.add(new com.expensedash.client.controllers.HistoryController.Row(
@@ -217,11 +234,11 @@ public class DashboardController implements Initializable {
             stage.show();
         } catch (Exception e) {
             e.printStackTrace();
-            new Alert(Alert.AlertType.ERROR, "Failed to open history: " + e.getMessage()).showAndWait();
+            showError("Failed to open history: " + e.getMessage());
         }
     }
 
-
+    /** Logs the user out */
     @FXML
     private void onLogout() {
         try {
@@ -237,8 +254,9 @@ public class DashboardController implements Initializable {
         }
     }
 
-    // --- UI REFRESH ---
+    // --- UI Helpers ---
 
+    /** Refreshes the dashboard display */
     private void refreshUI() {
         ObservableList<String> gitems = FXCollections.observableArrayList(groups.values());
         groupList.setItems(gitems);
@@ -252,16 +270,22 @@ public class DashboardController implements Initializable {
 
         for (Expense e : expenses.values()) {
             if (e.groupId != selectedGroup) continue;
+
             if (Session.getCurrentUser().equals(e.payer)) paid += e.amount;
+
             Map<Integer, Double> sp = splits.getOrDefault(e.id, Map.of());
             double yourShare = sp.entrySet().stream()
                     .filter(en -> Session.getCurrentUser().equals(members.get(en.getKey())))
                     .mapToDouble(Map.Entry::getValue).sum();
-            if (yourShare > 0 && !Session.getCurrentUser().equals(e.payer)) owed += yourShare;
+
+            if (yourShare > 0 && !Session.getCurrentUser().equals(e.payer))
+                owed += yourShare;
+
             if (Session.getCurrentUser().equals(e.payer)) {
                 double others = sp.values().stream().mapToDouble(Double::doubleValue).sum() - yourShare;
                 recv += Math.max(0, others);
             }
+
             for (var en : sp.entrySet()) {
                 String name = members.get(en.getKey());
                 balanceByName.putIfAbsent(name, 0.0);
@@ -310,6 +334,7 @@ public class DashboardController implements Initializable {
         public final String payer;
         public final double amount;
         public final String description;
+
         public Expense(int id, int groupId, String payer, double amount, String description) {
             this.id = id;
             this.groupId = groupId;

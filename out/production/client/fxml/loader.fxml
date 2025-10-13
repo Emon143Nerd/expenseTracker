@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox xmlns="http://javafx.com/javafx/21"
+      xmlns:fx="http://javafx.com/fxml/1"
+      alignment="CENTER" spacing="20"
+      style="-fx-background-color:#1e1e1e;">
+    <children>
+        <ProgressIndicator progress="-1.0"/>
+        <Label text="Connecting to server..."
+               style="-fx-text-fill:#00bfa6;-fx-font-size:16px;"/>
+    </children>
+</VBox>

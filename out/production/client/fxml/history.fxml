@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<VBox xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.expensedash.client.controllers.HistoryController"
+      spacing="10" padding="12">
+    <children>
+        <Label text="Expense History" style="-fx-font-size: 16px; -fx-font-weight: bold;"/>
+        <TableView fx:id="table">
+            <columns>
+                <TableColumn fx:id="colDesc" text="Description" prefWidth="220"/>
+                <TableColumn fx:id="colPayer" text="Payer" prefWidth="120"/>
+                <TableColumn fx:id="colAmount" text="Amount" prefWidth="100"/>
+            </columns>
+        </TableView>
+        <Button text="Close" onAction="#onClose"/>
+    </children>
+</VBox>

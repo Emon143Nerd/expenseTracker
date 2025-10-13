@@ -1,0 +1,1 @@
+-- Schema is created programmatically in Database.init()

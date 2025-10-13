@@ -37,12 +37,18 @@ public class GroupManagerController {
             return;
         }
 
+        // ✅ Check uniqueness
+        if (groups != null && groups.containsValue(name)) {
+            showError("A group named '" + name + "' already exists.");
+            return;
+        }
         submitter.accept("ADD_GROUP|" + name + "|" + (cat.isEmpty() ? "General" : cat));
         showInfo("Group '" + name + "' created successfully.");
 
         groupName.clear();
         groupCategory.clear();
     }
+
 
     @FXML
     private void onAddMember() {

@@ -20,6 +20,8 @@
                 <Button text="+ Create New Group" onAction="#onManageGroups"
                         style="-fx-background-color: #009688; -fx-text-fill: white;"/>
                 <ListView fx:id="groupList" VBox.vgrow="ALWAYS"/>
+                <Button text="Join Group" onAction="#onJoinGroup"
+                        style="-fx-background-color: #009688; -fx-text-fill: white;"/>
             </children>
             <padding>
                 <Insets top="16.0" right="12.0" bottom="16.0" left="12.0"/>

@@ -129,27 +129,23 @@ public class LoginController {
     private void openDashboard() {
         try {
             FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/dashboard.fxml"));
-            Parent root = loader.load(); // load first!
-            DashboardController controller = loader.getController();
+            Parent root = loader.load();
 
-            if (controller != null) {
-                controller.initWithNetClient(net);
-            } else {
-                throw new IllegalStateException("DashboardController not found — check fx:controller in dashboard.fxml!");
-            }
+            DashboardController controller = loader.getController();
+            if (controller == null)
+                throw new IllegalStateException("DashboardController not loaded from FXML");
+
+            controller.initWithNetClient(net);
 
             Scene scene = new Scene(root, 1200, 700);
             scene.getStylesheets().add(getClass().getResource("/dark-theme.css").toExternalForm());
 
-
-            // Create and show dashboard window
             Stage dashboardStage = new Stage();
             dashboardStage.setTitle("ExpenseDash Dashboard");
             dashboardStage.setScene(scene);
             dashboardStage.setMaximized(true);
             dashboardStage.show();
 
-            // ✅ Close the login window safely (only if injected)
             if (loginButton != null && loginButton.getScene() != null) {
                 Stage loginStage = (Stage) loginButton.getScene().getWindow();
                 loginStage.close();
@@ -160,6 +156,8 @@ public class LoginController {
             showError("Failed to open dashboard: " + e.getMessage());
         }
     }
+
+
 
 
     private void showError(String msg) {

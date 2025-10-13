@@ -58,6 +58,24 @@ public class DashboardController implements Initializable {
                 refreshUI();
             }
         });
+
+        groupSearch.textProperty().addListener((obs, old, query) -> {
+            if (query == null || query.isBlank()) {
+                groupList.setItems(FXCollections.observableArrayList(groups.values()));
+                return;
+            }
+
+            var filtered = groups.values().stream()
+                    .filter(name -> name.toLowerCase().contains(query.toLowerCase()))
+                    .toList();
+
+            groupList.setItems(FXCollections.observableArrayList(filtered));
+
+            if (filtered.isEmpty()) {
+                showInfo("No such group found. You can create it from 'Create New Group'.");
+            }
+        });
+
     }
 
     /** Called from LoginController after login succeeds */
@@ -137,12 +155,16 @@ public class DashboardController implements Initializable {
             if (controller == null)
                 throw new IllegalStateException("GroupManagerController not loaded from FXML");
 
-            // ✅ Add this:
+            // ✅ Defensive checks
+            if (net == null)
+                throw new IllegalStateException("Network client (net) is null — initWithNetClient() not called.");
+            if (groups == null)
+                throw new IllegalStateException("Groups map is null — not initialized.");
+
             System.out.println("[DEBUG] net = " + net);
             System.out.println("[DEBUG] groups = " + groups);
 
-            controller.init(net::send, groups); // line 145 (NPE happens here)
-
+            controller.init(net::send, groups);
             stage.show();
 
         } catch (Exception e) {
@@ -151,6 +173,24 @@ public class DashboardController implements Initializable {
                     "Failed to open Group Manager:\n" + e.getMessage(),
                     ButtonType.OK).showAndWait();
         }
+    }
+
+    @FXML
+    private void onJoinGroup() {
+        String selected = groupList.getSelectionModel().getSelectedItem();
+        if (selected == null || selected.isEmpty()) {
+            showError("Please select a group from the list to join.");
+            return;
+        }
+
+        int gid = groupNameToId(selected);
+        if (gid == -1) {
+            showError("Selected group not found.");
+            return;
+        }
+
+        net.send("JOIN_GROUP|" + gid + "|" + Session.getCurrentUser());
+        showInfo("Join request sent for group '" + selected + "'.");
     }
 
 

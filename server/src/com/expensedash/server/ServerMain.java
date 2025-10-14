@@ -96,23 +96,14 @@ public class ServerMain {
                     int groupId = Integer.parseInt(p[1]);
                     String username = p[2];
                     try {
-                        int newId = session.db.addMemberValidated(username, groupId);
-                        if (newId == -1) {
-                            pw.println("JOIN_DUP");
-                        } else {
-                            broadcast("MEMBER|" + newId + "|" + username + "|" + groupId);
-                            pw.println("JOIN_OK|" + newId);
-                        }
-                    } catch (SQLException ex) {
-                        if ("USER_NOT_FOUND".equals(ex.getMessage())) {
-                            pw.println("JOIN_ERR|USER_NOT_FOUND");
-                        } else {
-                            pw.println("JOIN_ERR|" + ex.getMessage());
-                        }
+                        session.db.createJoinRequest(username, groupId);
+                        pw.println("JOIN_REQ_OK|" + groupId);
+                        System.out.println("[Server] Join request created for user: " + username);
                     } catch (Exception ex) {
-                        pw.println("JOIN_ERR|" + ex.getMessage());
+                        pw.println("JOIN_REQ_ERR|" + ex.getMessage());
                     }
                 }
+
 
                 else if (line.startsWith("SEARCH_GROUP|")) {
                     String[] p = line.split("\\|", 2);
@@ -184,6 +175,26 @@ public class ServerMain {
                         e.printStackTrace();
                     }
                 }
+                else if (line.startsWith("APPROVE_JOIN|")) {
+                    int reqId = Integer.parseInt(line.split("\\|")[1]);
+                    try {
+                        session.db.approveJoinRequest(reqId);
+                        pw.println("APPROVE_OK");
+                    } catch (Exception ex) {
+                        pw.println("APPROVE_ERR|" + ex.getMessage());
+                    }
+                }
+
+                else if (line.startsWith("REJECT_JOIN|")) {
+                    int reqId = Integer.parseInt(line.split("\\|")[1]);
+                    try {
+                        session.db.rejectJoinRequest(reqId);
+                        pw.println("REJECT_OK");
+                    } catch (Exception ex) {
+                        pw.println("REJECT_ERR|" + ex.getMessage());
+                    }
+                }
+
 
                 else if (line.startsWith("SETTLE|")) {
                     String[] p = line.split("\\|", 2);

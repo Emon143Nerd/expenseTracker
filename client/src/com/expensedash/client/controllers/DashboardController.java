@@ -191,25 +191,17 @@ public class DashboardController implements Initializable {
 
     @FXML
     private void onJoinGroup() {
-        String selected = groupList.getSelectionModel().getSelectedItem();
-        if (selected == null || selected.isEmpty()) {
-            showError("Please select a group from the list to join.");
-            return;
-        }
-
-        int gid = groupNameToId(selected);
-        if (gid == -1) {
-            showError("Could not resolve group ID — try searching again.");
-            return;
-        }
-
         try {
-            net.send("JOIN_GROUP|" + gid + "|" + Session.getCurrentUser());
-            showInfo("Join request sent for group '" + selected + "'.");
-            // Optionally refresh data after join
-            net.send("REQUEST_SNAPSHOT");
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/join_group.fxml"));
+            Stage stage = new Stage();
+            stage.setTitle("Join Group");
+            stage.setScene(new Scene(loader.load(), 400, 400));
+            JoinGroupController controller = loader.getController();
+            controller.init(net::send);
+            stage.show();
         } catch (Exception e) {
-            showError("Failed to send join request: " + e.getMessage());
+            e.printStackTrace();
+            showError("Failed to open join group window: " + e.getMessage());
         }
     }
 

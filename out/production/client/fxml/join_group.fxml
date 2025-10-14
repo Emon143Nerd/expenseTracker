@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox xmlns="http://javafx.com/javafx/21"
+      xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.expensedash.client.controllers.JoinGroupController"
+      spacing="10" style="-fx-padding: 12;">
+    <children>
+        <Label text="Search and Join Group" style="-fx-font-weight: bold;"/>
+        <TextField fx:id="searchField" promptText="Enter group name..."/>
+        <Button text="Search" onAction="#onSearch"/>
+        <ListView fx:id="resultList" prefHeight="200"/>
+        <Button text="Request to Join" onAction="#onJoin"/>
+        <Button text="Close" onAction="#onClose"/>
+    </children>
+</VBox>

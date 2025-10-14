@@ -47,6 +47,12 @@ public class Database {
                     "username TEXT UNIQUE NOT NULL, " +
                     "password_hash TEXT NOT NULL)");
 
+            st.execute("CREATE TABLE IF NOT EXISTS join_requests (" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                    "username TEXT NOT NULL, " +
+                    "group_id INTEGER NOT NULL, " +
+                    "status TEXT DEFAULT 'PENDING')");
+
             st.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_groups_name ON groups(name)");
             st.execute("CREATE INDEX IF NOT EXISTS idx_members_group ON members(group_id)");
         }
@@ -117,7 +123,6 @@ public class Database {
         }
     }
 
-
     public boolean groupNameExists(String name) throws SQLException {
         try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement(
@@ -128,7 +133,6 @@ public class Database {
         }
     }
 
-    /** Case-insensitive LIKE search for groups by name */
     public List<Group> searchGroups(String query) throws SQLException {
         List<Group> list = new ArrayList<>();
         String q = (query == null || query.isBlank()) ? "%" : "%" + query.toLowerCase() + "%";
@@ -142,6 +146,56 @@ public class Database {
             }
         }
         return list;
+    }
+
+    // JOIN REQUEST LOGIC
+    public void createJoinRequest(String username, int groupId) throws SQLException {
+        try (Connection c = connect();
+             PreparedStatement ps = c.prepareStatement(
+                     "INSERT INTO join_requests(username, group_id, status) VALUES (?, ?, 'PENDING')")) {
+            ps.setString(1, username);
+            ps.setInt(2, groupId);
+            ps.executeUpdate();
+        }
+    }
+
+    public List<Map<String, Object>> getPendingJoinRequestsForCreator(String creatorName) throws SQLException {
+        String sql = "SELECT jr.id, jr.username, g.id as group_id, g.name " +
+                "FROM join_requests jr JOIN groups g ON g.id = jr.group_id " +
+                "WHERE g.name IN (SELECT name FROM groups WHERE id IN " +
+                "(SELECT group_id FROM members WHERE name=?)) AND jr.status='PENDING'";
+        List<Map<String, Object>> list = new ArrayList<>();
+        try (Connection c = connect(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, creatorName);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                Map<String, Object> req = new HashMap<>();
+                req.put("id", rs.getInt("id"));
+                req.put("username", rs.getString("username"));
+                req.put("group_id", rs.getInt("group_id"));
+                req.put("group_name", rs.getString("name"));
+                list.add(req);
+            }
+        }
+        return list;
+    }
+
+    public void approveJoinRequest(int requestId) throws SQLException {
+        try (Connection c = connect();
+             PreparedStatement ps = c.prepareStatement(
+                     "UPDATE join_requests SET status='APPROVED' WHERE id=?")) {
+            ps.setInt(1, requestId);
+            ps.executeUpdate();
+        }
+    }
+
+    public void rejectJoinRequest(int requestId) throws SQLException {
+        try (Connection c = connect();
+             PreparedStatement ps = c.prepareStatement(
+                     "UPDATE join_requests SET status='REJECTED' WHERE id=?")) {
+            ps.setInt(1, requestId);
+            ps.executeUpdate();
+        }
     }
 
     // --------------------------------------------------------------------
@@ -188,7 +242,7 @@ public class Database {
             throw new SQLException("USER_NOT_FOUND");
         }
         if (isMemberInGroup(username, groupId)) {
-            return -1; // duplicate membership
+            return -1;
         }
         return addMember(username, groupId);
     }
@@ -219,7 +273,7 @@ public class Database {
             ps.executeUpdate();
             return true;
         } catch (SQLException e) {
-            return false; // username taken
+            return false;
         }
     }
 

@@ -23,6 +23,9 @@ public class Database {
                     "id INTEGER PRIMARY KEY AUTOINCREMENT," +
                     "username TEXT UNIQUE NOT NULL," +
                     "password_hash TEXT NOT NULL)");
+            st.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_groups_name ON groups(name)");
+            st.execute("CREATE INDEX IF NOT EXISTS idx_members_group ON members(group_id)");
+
         }
         seed();
     }
@@ -80,6 +83,61 @@ public class Database {
             return rs.next() ? rs.getInt(1) : -1;
         }
     }
+
+    public boolean userExists(String username) throws SQLException {
+        try (Connection c = connect();
+             PreparedStatement ps = c.prepareStatement("SELECT 1 FROM users WHERE username=? LIMIT 1")) {
+            ps.setString(1, username);
+            ResultSet rs = ps.executeQuery();
+            return rs.next();
+        }
+    }
+
+    public boolean groupNameExists(String name) throws SQLException {
+        try (Connection c = connect();
+             PreparedStatement ps = c.prepareStatement("SELECT 1 FROM groups WHERE name=? LIMIT 1")) {
+            ps.setString(1, name);
+            ResultSet rs = ps.executeQuery();
+            return rs.next();
+        }
+    }
+
+    /** Case-insensitive LIKE search for groups by name. */
+    public List<Group> searchGroups(String query) throws SQLException {
+        List<Group> list = new ArrayList<>();
+        String q = (query == null || query.isBlank()) ? "%" : "%" + query.toLowerCase() + "%";
+        try (Connection c = connect();
+             PreparedStatement ps = c.prepareStatement(
+                     "SELECT id,name,category FROM groups WHERE LOWER(name) LIKE ? ORDER BY name ASC")) {
+            ps.setString(1, q);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) list.add(new Group(rs.getInt(1), rs.getString(2), rs.getString(3)));
+        }
+        return list;
+    }
+
+    public boolean isMemberInGroup(String username, int groupId) throws SQLException {
+        try (Connection c = connect();
+             PreparedStatement ps = c.prepareStatement(
+                     "SELECT 1 FROM members WHERE name=? AND group_id=? LIMIT 1")) {
+            ps.setString(1, username);
+            ps.setInt(2, groupId);
+            ResultSet rs = ps.executeQuery();
+            return rs.next();
+        }
+    }
+
+    /** Validated add: ensure user exists and not already a member. Returns new member id or -1 if duplicate. */
+    public int addMemberValidated(String username, int groupId) throws SQLException {
+        if (!userExists(username)) {
+            throw new SQLException("USER_NOT_FOUND");
+        }
+        if (isMemberInGroup(username, groupId)) {
+            return -1; // duplicate membership
+        }
+        return addMember(username, groupId);
+    }
+
 
     public List<Expense> getExpenses() throws SQLException {
         List<Expense> list = new ArrayList<>();

@@ -1,5 +1,6 @@
 package com.expensedash.server;
 
+import java.sql.SQLException;
 import java.io.*;
 import java.net.*;
 import java.util.*;
@@ -35,16 +36,92 @@ public class ServerMain {
 
             String line;
             while ((line = br.readLine()) != null) {
-                if (line.startsWith("ADD_GROUP|")) {
-                    String[] p = line.split("\\|", 4);
-                    int id = session.db.addGroup(p[1], p[2]);
-                    broadcast("GROUP|" + id + "|" + p[1] + "|" + p[2]);
+                if (line.equals("REQUEST_SNAPSHOT")) {
+                    sendSnapshot(pw, session.db);
                 }
+
+                else if (line.startsWith("ADD_GROUP|")) {
+                    String[] p = line.split("\\|", 3);
+                    String gName = p[1];
+                    String gCat  = p.length >= 3 ? p[2] : "";
+
+                    try {
+                        if (session.db.groupNameExists(gName)) {
+                            pw.println("ADD_GROUP_ERR|DUPLICATE");
+                        } else {
+                            int id = session.db.addGroup(gName, gCat);
+                            broadcast("GROUP|" + id + "|" + gName + "|" + gCat);
+                            pw.println("ADD_GROUP_OK|" + id);
+                        }
+                    } catch (Exception ex) {
+                        pw.println("ADD_GROUP_ERR|" + ex.getMessage());
+                    }
+                }
+
                 else if (line.startsWith("ADD_MEMBER|")) {
-                    String[] p = line.split("\\|", 4);
-                    int id = session.db.addMember(p[1], Integer.parseInt(p[2]));
-                    broadcast("MEMBER|" + id + "|" + p[1] + "|" + p[2]);
+                    String[] p = line.split("\\|", 3);
+                    String username = p[1];
+                    int groupId = Integer.parseInt(p[2]);
+                    try {
+                        int newId = session.db.addMemberValidated(username, groupId);
+                        if (newId == -1) {
+                            pw.println("ADD_MEMBER_DUP");
+                        } else {
+                            broadcast("MEMBER|" + newId + "|" + username + "|" + groupId);
+                            pw.println("ADD_MEMBER_OK|" + newId);
+                        }
+                    } catch (SQLException ex) {
+                        if ("USER_NOT_FOUND".equals(ex.getMessage())) {
+                            pw.println("ADD_MEMBER_ERR|USER_NOT_FOUND");
+                        } else {
+                            pw.println("ADD_MEMBER_ERR|" + ex.getMessage());
+                        }
+                    } catch (Exception ex) {
+                        pw.println("ADD_MEMBER_ERR|" + ex.getMessage());
+                    }
                 }
+
+                else if (line.startsWith("JOIN_GROUP|")) {
+                    String[] p = line.split("\\|", 3);
+                    int groupId = Integer.parseInt(p[1]);
+                    String username = p[2];
+                    try {
+                        int newId = session.db.addMemberValidated(username, groupId);
+                        if (newId == -1) {
+                            pw.println("JOIN_DUP");
+                        } else {
+                            broadcast("MEMBER|" + newId + "|" + username + "|" + groupId);
+                            pw.println("JOIN_OK|" + newId);
+                        }
+                    } catch (SQLException ex) {
+                        if ("USER_NOT_FOUND".equals(ex.getMessage())) {
+                            pw.println("JOIN_ERR|USER_NOT_FOUND");
+                        } else {
+                            pw.println("JOIN_ERR|" + ex.getMessage());
+                        }
+                    } catch (Exception ex) {
+                        pw.println("JOIN_ERR|" + ex.getMessage());
+                    }
+                }
+
+                else if (line.startsWith("SEARCH_GROUP|")) {
+                    String[] p = line.split("\\|", 2);
+                    String query = p.length >= 2 ? p[1] : "";
+                    try {
+                        List<Group> results = session.db.searchGroups(query);
+                        pw.println("SEARCH_BEGIN");
+                        for (Group g : results) {
+                            // Reuse the GROUP line format so your client can parse it easily
+                            pw.println("GROUP|" + g.id + "|" + g.name + "|" + g.category);
+                        }
+                        pw.println("SEARCH_END");
+                    } catch (Exception ex) {
+                        pw.println("SEARCH_ERR|" + ex.getMessage());
+                    }
+                }
+
+
+
                 else if (line.startsWith("ADD_EXPENSE|")) {
                     // ADD_EXPENSE|groupId|payer|amount|description|memberId:amount,memberId:amount
                     String[] p = line.split("\\|", 6);

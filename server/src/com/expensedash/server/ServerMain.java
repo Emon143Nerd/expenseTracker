@@ -36,8 +36,13 @@ public class ServerMain {
 
             String line;
             while ((line = br.readLine()) != null) {
+
                 if (line.equals("REQUEST_SNAPSHOT")) {
-                    sendSnapshot(pw, session.db);
+                    if (session.username != null) {
+                        sendSnapshot(pw, session.db, session.username); // ✅ FIX: username now used
+                    } else {
+                        pw.println("SNAPSHOT_ERR|User not logged in");
+                    }
                 }
 
                 else if (line.startsWith("ADD_GROUP|")) {
@@ -50,6 +55,11 @@ public class ServerMain {
                             pw.println("ADD_GROUP_ERR|DUPLICATE");
                         } else {
                             int id = session.db.addGroup(gName, gCat);
+
+                            // ✅ Auto-assign creator as a member
+                            if (session.username != null)
+                                session.db.addMemberValidated(session.username, id);
+
                             broadcast("GROUP|" + id + "|" + gName + "|" + gCat);
                             pw.println("ADD_GROUP_OK|" + id);
                         }
@@ -111,7 +121,6 @@ public class ServerMain {
                         List<Group> results = session.db.searchGroups(query);
                         pw.println("SEARCH_BEGIN");
                         for (Group g : results) {
-                            // Reuse the GROUP line format so your client can parse it easily
                             pw.println("GROUP|" + g.id + "|" + g.name + "|" + g.category);
                         }
                         pw.println("SEARCH_END");
@@ -120,10 +129,7 @@ public class ServerMain {
                     }
                 }
 
-
-
                 else if (line.startsWith("ADD_EXPENSE|")) {
-                    // ADD_EXPENSE|groupId|payer|amount|description|memberId:amount,memberId:amount
                     String[] p = line.split("\\|", 6);
                     int groupId = Integer.parseInt(p[1]);
                     String payer = p[2];
@@ -144,8 +150,8 @@ public class ServerMain {
                     broadcast("EXPENSE|" + expenseId + "|" + groupId + "|" + payer + "|" + amount + "|" + desc);
                     for (String sp: splitLines) broadcast(sp);
                 }
+
                 else if (line.startsWith("REGISTER|")) {
-                    // REGISTER|username|passwordHash
                     String[] p = line.split("\\|", 3);
                     try {
                         boolean ok = session.db.registerUser(p[1], p[2]);
@@ -160,16 +166,16 @@ public class ServerMain {
                         e.printStackTrace();
                     }
                 }
+
                 else if (line.startsWith("LOGIN|")) {
-                    // LOGIN|username|passwordHash
                     String[] p = line.split("\\|", 3);
                     try {
                         boolean ok = session.db.validateUser(p[1], p[2]);
                         if (ok) {
+                            session.username = p[1]; // ✅ FIX: store logged-in username
                             pw.println("LOGIN_OK");
-                            System.out.println("[Server] User logged in: " + p[1]);
-                            // ✅ Send snapshot AFTER successful login
-                            sendSnapshot(pw, session.db);
+                            System.out.println("[Server] User logged in: " + session.username);
+                            sendSnapshot(pw, session.db, session.username); // ✅ FIX: now valid
                         } else {
                             pw.println("LOGIN_FAIL");
                         }
@@ -178,6 +184,7 @@ public class ServerMain {
                         e.printStackTrace();
                     }
                 }
+
                 else if (line.startsWith("SETTLE|")) {
                     String[] p = line.split("\\|", 2);
                     int groupId = Integer.parseInt(p[1]);
@@ -187,6 +194,7 @@ public class ServerMain {
                     } catch (Exception ignore) {}
                 }
             }
+
         } catch (Exception e) {
             System.out.println("[Server] Client disconnected or error: " + e.getMessage());
         } finally {
@@ -194,21 +202,38 @@ public class ServerMain {
         }
     }
 
-    private static void sendSnapshot(PrintWriter pw, Database db) throws Exception {
-        pw.println("SNAPSHOT_BEGIN");
-        for (Group g : db.getGroups()) {
-            pw.println("GROUP|" + g.id + "|" + g.name + "|" + g.category);
+    // ✅ FIX: Updated sendSnapshot to be non-static friendly
+    private static void sendSnapshot(PrintWriter pw, Database db, String username) {
+        try {
+            pw.println("SNAPSHOT_BEGIN");
+
+            // ✅ Only groups where user is a member or creator
+            List<Integer> userGroups = db.getGroupsForUser(username);
+
+            for (int gid : userGroups) {
+                var g = db.getGroupById(gid);
+                pw.println("GROUP|" + g.id + "|" + g.name + "|" + g.category);
+            }
+
+            for (int gid : userGroups) {
+                for (var m : db.getMembersForGroup(gid)) {
+                    pw.println("MEMBER|" + m.id + "|" + m.name + "|" + gid);
+                }
+            }
+
+            for (int gid : userGroups) {
+                for (var e : db.getExpensesForGroup(gid)) {
+                    pw.println("EXPENSE|" + e.id + "|" + gid + "|" + e.payer + "|" + e.amount + "|" + e.desc);
+                    for (var sp : db.getSplitsForExpense(e.id)) {
+                        pw.println("SPLIT|" + e.id + "|" + sp.memberId + "|" + sp.amount);
+                    }
+                }
+            }
+
+            pw.println("SNAPSHOT_END");
+        } catch (Exception e) {
+            pw.println("SNAPSHOT_ERR|" + e.getMessage());
         }
-        for (Member m : db.getMembers()) {
-            pw.println("MEMBER|" + m.id + "|" + m.name + "|" + m.groupId);
-        }
-        for (Expense e : db.getExpenses()) {
-            pw.println("EXPENSE|" + e.id + "|" + e.groupId + "|" + e.payer + "|" + e.amount + "|" + e.description);
-        }
-        for (Split sp : db.getSplits()) {
-            pw.println("SPLIT|" + sp.expenseId + "|" + sp.memberId + "|" + sp.amount);
-        }
-        pw.println("SNAPSHOT_END");
     }
 
     private static void broadcast(String msg) {
@@ -223,6 +248,7 @@ public class ServerMain {
     private static class ClientSession {
         Socket socket;
         Database db;
+        String username; // ✅ FIX: added per-client username
         ClientSession(Socket s, Database db) {
             this.socket = s;
             this.db = db;

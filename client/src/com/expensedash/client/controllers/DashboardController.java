@@ -61,20 +61,12 @@ public class DashboardController implements Initializable {
 
         groupSearch.textProperty().addListener((obs, old, query) -> {
             if (query == null || query.isBlank()) {
-                groupList.setItems(FXCollections.observableArrayList(groups.values()));
+                net.send("REQUEST_SNAPSHOT");
                 return;
             }
-
-            var filtered = groups.values().stream()
-                    .filter(name -> name.toLowerCase().contains(query.toLowerCase()))
-                    .toList();
-
-            groupList.setItems(FXCollections.observableArrayList(filtered));
-
-            if (filtered.isEmpty()) {
-                showInfo("No such group found. You can create it from 'Create New Group'.");
-            }
+            net.send("SEARCH_GROUP|" + query.trim());
         });
+
 
     }
 
@@ -113,7 +105,16 @@ public class DashboardController implements Initializable {
         String[] p = line.split("\\|");
         try {
             switch (p[0]) {
-                case "GROUP" -> groups.put(Integer.parseInt(p[1]), p[2]);
+                case "GROUP" -> {
+                    int gid = Integer.parseInt(p[1]);
+                    String name = p[2];
+                    groups.put(gid, name);
+                    Platform.runLater(() -> {
+                        if (!groupList.getItems().contains(name))
+                            groupList.getItems().add(name);
+                    });
+                }
+
                 case "MEMBER" -> members.put(Integer.parseInt(p[1]), p[2]);
                 case "EXPENSE" -> expenses.put(
                         Integer.parseInt(p[1]),
@@ -130,6 +131,19 @@ public class DashboardController implements Initializable {
                         Platform.runLater(this::refreshUI);
                     }
                 }
+                case "SEARCH_BEGIN" -> {
+                    Platform.runLater(() -> groupList.getItems().clear());
+                    return;
+                }
+                case "SEARCH_END" -> {
+                    // Optionally, auto-select first result
+                    Platform.runLater(() -> {
+                        if (!groupList.getItems().isEmpty())
+                            groupList.getSelectionModel().select(0);
+                    });
+                    return;
+                }
+
             }
             Platform.runLater(this::refreshUI);
         } catch (Exception e) {
@@ -185,13 +199,20 @@ public class DashboardController implements Initializable {
 
         int gid = groupNameToId(selected);
         if (gid == -1) {
-            showError("Selected group not found.");
+            showError("Could not resolve group ID — try searching again.");
             return;
         }
 
-        net.send("JOIN_GROUP|" + gid + "|" + Session.getCurrentUser());
-        showInfo("Join request sent for group '" + selected + "'.");
+        try {
+            net.send("JOIN_GROUP|" + gid + "|" + Session.getCurrentUser());
+            showInfo("Join request sent for group '" + selected + "'.");
+            // Optionally refresh data after join
+            net.send("REQUEST_SNAPSHOT");
+        } catch (Exception e) {
+            showError("Failed to send join request: " + e.getMessage());
+        }
     }
+
 
 
 

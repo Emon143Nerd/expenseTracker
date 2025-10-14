@@ -16,10 +16,6 @@ import javafx.stage.Stage;
 import java.net.URL;
 import java.util.*;
 
-/**
- * DashboardController — main controller for the ExpenseDash dashboard.
- * Handles data display, user actions, and server communication.
- */
 public class DashboardController implements Initializable {
 
     // --- UI Elements (FXML bindings) ---
@@ -35,15 +31,17 @@ public class DashboardController implements Initializable {
     @FXML private TableColumn<BalanceRow, String> colStatus;
     @FXML private PieChart pieChart;
 
-    // --- Network and Data Structures ---
+    // --- References ---
+    private JoinGroupController joinGroupController;
     private NetClient net;
+
+    // --- Data Structures ---
     private final Map<Integer, String> members = new HashMap<>();
     private final Map<Integer, String> groups = new HashMap<>();
     private final Map<Integer, Expense> expenses = new HashMap<>();
     private final Map<Integer, Map<Integer, Double>> splits = new HashMap<>();
     private int selectedGroup = 1;
 
-    // --- Initialization ---
     @Override
     public void initialize(URL url, ResourceBundle rb) {
         welcomeLabel.setText("Welcome, " + Session.getCurrentUser());
@@ -51,7 +49,7 @@ public class DashboardController implements Initializable {
         colAmount.setCellValueFactory(c -> c.getValue().amountProperty());
         colStatus.setCellValueFactory(c -> c.getValue().statusProperty());
 
-        // Listen for group selection changes
+        // Group selection listener
         groupList.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
                 selectedGroup = groupNameToId(newVal);
@@ -59,6 +57,7 @@ public class DashboardController implements Initializable {
             }
         });
 
+        // Group search in dashboard
         groupSearch.textProperty().addListener((obs, old, query) -> {
             if (query == null || query.isBlank()) {
                 net.send("REQUEST_SNAPSHOT");
@@ -66,8 +65,6 @@ public class DashboardController implements Initializable {
             }
             net.send("SEARCH_GROUP|" + query.trim());
         });
-
-
     }
 
     /** Called from LoginController after login succeeds */
@@ -84,24 +81,80 @@ public class DashboardController implements Initializable {
         this.net.setMessageHandler(this::onMessage);
     }
 
-    // --- Message Handling from Server ---
+    // --- Message Handling ---
     private void onMessage(String line) {
         if (line == null || line.isBlank()) return;
 
-        switch (line) {
-            case "SNAPSHOT_BEGIN" -> {
-                groups.clear();
-                members.clear();
-                expenses.clear();
-                splits.clear();
-                return;
+        // ── Search & join-request notifications (handled BEFORE the regular switch) ──
+        if (line.equals("SEARCH_BEGIN")) {
+            Platform.runLater(() -> groupList.getItems().clear());
+            return;
+        }
+        if (line.startsWith("SEARCH_RESULT|")) {
+            // SEARCH_RESULT|<groupId>|<name>|<category>
+            String[] p = line.split("\\|", 4);
+            if (p.length >= 4) {
+                String display = p[2]; // show clean name
+                Platform.runLater(() -> {
+                    if (!groupList.getItems().contains(display)) {
+                        groupList.getItems().add(display);
+                    }
+                });
             }
-            case "SNAPSHOT_END" -> {
-                Platform.runLater(this::refreshUI);
-                return;
-            }
+            return;
+        }
+        if (line.equals("SEARCH_END")) {
+            // Optionally auto-select first result
+            Platform.runLater(() -> {
+                if (!groupList.getItems().isEmpty()) groupList.getSelectionModel().select(0);
+            });
+            return;
         }
 
+        // Creator receives a real-time join request popup
+        if (line.startsWith("JOIN_REQ|")) {
+            // JOIN_REQ|<requestId>|<groupId>|<groupName>|<username>
+            String[] p = line.split("\\|", 5);
+            if (p.length == 5) {
+                int reqId = Integer.parseInt(p[1]);
+                int gid   = Integer.parseInt(p[2]);
+                String gName = p[3];
+                String who   = p[4];
+                Platform.runLater(() -> askApproveJoin(reqId, gid, gName, who));
+            }
+            return;
+        }
+
+        if (line.startsWith("JOIN_OK|")) {
+            // JOIN_OK|<groupId>|<groupName>
+            String[] p = line.split("\\|", 3);
+            String gName = (p.length >= 3) ? p[2] : "group";
+            Platform.runLater(() -> {
+                showInfo("You joined \"" + gName + "\"");
+                // Ask fresh snapshot so your left panel shows ONLY your groups
+                if (net != null) net.send("REQUEST_SNAPSHOT");
+            });
+            return;
+        }
+
+        if (line.startsWith("JOIN_REJ|")) {
+            // JOIN_REJ|<groupId>|<groupName>
+            String[] p = line.split("\\|", 3);
+            String gName = (p.length >= 3) ? p[2] : "group";
+            Platform.runLater(() -> showError("Your request to join \"" + gName + "\" was rejected."));
+            return;
+        }
+
+        if (line.equals("SNAPSHOT_BEGIN")) {
+            groups.clear(); members.clear(); expenses.clear(); splits.clear();
+            return;
+        }
+        if (line.equals("SNAPSHOT_END")) {
+            Platform.runLater(this::refreshUI);
+            return;
+        }
+
+        // ── Regular data stream from server ──
         String[] p = line.split("\\|");
         try {
             switch (p[0]) {
@@ -109,41 +162,30 @@ public class DashboardController implements Initializable {
                     int gid = Integer.parseInt(p[1]);
                     String name = p[2];
                     groups.put(gid, name);
-                    Platform.runLater(() -> {
-                        if (!groupList.getItems().contains(name))
-                            groupList.getItems().add(name);
-                    });
                 }
-
-                case "MEMBER" -> members.put(Integer.parseInt(p[1]), p[2]);
-                case "EXPENSE" -> expenses.put(
-                        Integer.parseInt(p[1]),
-                        new Expense(Integer.parseInt(p[1]), Integer.parseInt(p[2]),
-                                p[3], Double.parseDouble(p[4]), p[5]));
-                case "SPLIT" -> splits
-                        .computeIfAbsent(Integer.parseInt(p[1]), k -> new HashMap<>())
-                        .put(Integer.parseInt(p[2]), Double.parseDouble(p[3]));
+                case "MEMBER" -> {
+                    int mid = Integer.parseInt(p[1]);
+                    String name = p[2];
+                    members.put(mid, name);
+                }
+                case "EXPENSE" -> {
+                    int id = Integer.parseInt(p[1]);
+                    int gid = Integer.parseInt(p[2]);
+                    String payer = p[3];
+                    double amt = Double.parseDouble(p[4]);
+                    String desc = p[5];
+                    expenses.put(id, new Expense(id, gid, payer, amt, desc));
+                }
+                case "SPLIT" -> {
+                    int eid = Integer.parseInt(p[1]);
+                    int mid = Integer.parseInt(p[2]);
+                    double a = Double.parseDouble(p[3]);
+                    splits.computeIfAbsent(eid, k -> new HashMap<>()).put(mid, a);
+                }
                 case "RESET" -> {
                     int gid = Integer.parseInt(p[1]);
-                    if (gid == selectedGroup) {
-                        expenses.clear();
-                        splits.clear();
-                        Platform.runLater(this::refreshUI);
-                    }
+                    if (gid == selectedGroup) { expenses.clear(); splits.clear(); }
                 }
-                case "SEARCH_BEGIN" -> {
-                    Platform.runLater(() -> groupList.getItems().clear());
-                    return;
-                }
-                case "SEARCH_END" -> {
-                    // Optionally, auto-select first result
-                    Platform.runLater(() -> {
-                        if (!groupList.getItems().isEmpty())
-                            groupList.getSelectionModel().select(0);
-                    });
-                    return;
-                }
-
             }
             Platform.runLater(this::refreshUI);
         } catch (Exception e) {
@@ -151,15 +193,12 @@ public class DashboardController implements Initializable {
         }
     }
 
-    // --- Button Handlers ---
+    // --- Buttons ---
 
-    /** Opens the Group Manager dialog */
     @FXML
     private void onManageGroups() {
         try {
             var url = getClass().getResource("/fxml/group_manager.fxml");
-            System.out.println("[DEBUG] group_manager.fxml URL = " + url);
-
             FXMLLoader loader = new FXMLLoader(url);
             Stage stage = new Stage();
             stage.setTitle("Groups & Members");
@@ -169,23 +208,14 @@ public class DashboardController implements Initializable {
             if (controller == null)
                 throw new IllegalStateException("GroupManagerController not loaded from FXML");
 
-            // ✅ Defensive checks
             if (net == null)
                 throw new IllegalStateException("Network client (net) is null — initWithNetClient() not called.");
-            if (groups == null)
-                throw new IllegalStateException("Groups map is null — not initialized.");
-
-            System.out.println("[DEBUG] net = " + net);
-            System.out.println("[DEBUG] groups = " + groups);
 
             controller.init(net::send, groups);
             stage.show();
-
         } catch (Exception e) {
             e.printStackTrace();
-            new Alert(Alert.AlertType.ERROR,
-                    "Failed to open Group Manager:\n" + e.getMessage(),
-                    ButtonType.OK).showAndWait();
+            showError("Failed to open Group Manager:\n" + e.getMessage());
         }
     }
 
@@ -196,8 +226,10 @@ public class DashboardController implements Initializable {
             Stage stage = new Stage();
             stage.setTitle("Join Group");
             stage.setScene(new Scene(loader.load(), 400, 400));
-            JoinGroupController controller = loader.getController();
-            controller.init(net::send);
+
+            joinGroupController = loader.getController();
+            joinGroupController.init(net::send);
+
             stage.show();
         } catch (Exception e) {
             e.printStackTrace();
@@ -205,10 +237,6 @@ public class DashboardController implements Initializable {
         }
     }
 
-
-
-
-    /** Adds a new expense */
     @FXML
     private void onAddExpense() {
         TextInputDialog dialog = new TextInputDialog("12.50");
@@ -248,7 +276,6 @@ public class DashboardController implements Initializable {
         });
     }
 
-    /** Settles all balances */
     @FXML
     private void onSettleBalances() {
         Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
@@ -264,7 +291,6 @@ public class DashboardController implements Initializable {
         });
     }
 
-    /** Shows the expense history */
     @FXML
     private void onViewHistory() {
         try {
@@ -291,7 +317,25 @@ public class DashboardController implements Initializable {
         }
     }
 
-    /** Logs the user out */
+    @FXML
+    private void onViewJoinRequests() {
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/join_requests.fxml"));
+            Stage stage = new Stage();
+            stage.setTitle("Pending Join Requests");
+            stage.setScene(new Scene(loader.load(), 400, 400));
+
+            JoinRequestsController controller = loader.getController();
+            controller.init(net::send, Session.getCurrentUser());
+
+            stage.show();
+        } catch (Exception e) {
+            e.printStackTrace();
+            showError("Failed to open Join Requests window: " + e.getMessage());
+        }
+    }
+
+
     @FXML
     private void onLogout() {
         try {
@@ -309,7 +353,33 @@ public class DashboardController implements Initializable {
 
     // --- UI Helpers ---
 
-    /** Refreshes the dashboard display */
+    /**
+     * Shows a confirmation dialog when a join request arrives.
+     */
+    private void askApproveJoin(int reqId, int groupId, String groupName, String who) {
+        Platform.runLater(() -> {
+            Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+            alert.setTitle("Join Request");
+            alert.setHeaderText("Join request received");
+            alert.setContentText(who + " wants to join your group \"" + groupName + "\".");
+
+            ButtonType approveBtn = new ButtonType("Approve");
+            ButtonType rejectBtn = new ButtonType("Reject");
+            alert.getButtonTypes().setAll(approveBtn, rejectBtn, ButtonType.CANCEL);
+
+            alert.showAndWait().ifPresent(btn -> {
+                if (btn == approveBtn) {
+                    net.send("APPROVE_JOIN|" + reqId);
+                    showInfo("You approved " + who + " for group \"" + groupName + "\"");
+                } else if (btn == rejectBtn) {
+                    net.send("REJECT_JOIN|" + reqId);
+                    showInfo("You rejected " + who + " for group \"" + groupName + "\"");
+                }
+            });
+        });
+    }
+
+
     private void refreshUI() {
         ObservableList<String> gitems = FXCollections.observableArrayList(groups.values());
         groupList.setItems(gitems);
@@ -381,7 +451,7 @@ public class DashboardController implements Initializable {
         Platform.runLater(() -> new Alert(Alert.AlertType.INFORMATION, msg, ButtonType.OK).showAndWait());
     }
 
-    // --- Inner Data Model ---
+    // --- Inner Class ---
     public static class Expense {
         public final int id, groupId;
         public final String payer;

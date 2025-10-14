@@ -21,7 +21,8 @@ public class Database {
             st.execute("CREATE TABLE IF NOT EXISTS groups(" +
                     "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
                     "name TEXT NOT NULL UNIQUE, " +
-                    "category TEXT)");
+                    "category TEXT, " +
+                    "creator TEXT NOT NULL)");
 
             st.execute("CREATE TABLE IF NOT EXISTS members(" +
                     "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
@@ -51,7 +52,7 @@ public class Database {
                     "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
                     "username TEXT NOT NULL, " +
                     "group_id INTEGER NOT NULL, " +
-                    "status TEXT DEFAULT 'PENDING')");
+                    "status TEXT CHECK(status IN ('PENDING','APPROVED','REJECTED')) DEFAULT 'PENDING')");
 
             st.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_groups_name ON groups(name)");
             st.execute("CREATE INDEX IF NOT EXISTS idx_members_group ON members(group_id)");
@@ -65,8 +66,8 @@ public class Database {
             try (Statement st = c.createStatement();
                  ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM groups")) {
                 if (rs.next() && rs.getInt(1) == 0) {
-                    st.execute("INSERT INTO groups(name, category) VALUES " +
-                            "('Roommates','Living'),('Trip to Europe','Travel'),('Office Lunch','Work'),('Birthday Party','Event')");
+                    st.execute("INSERT INTO groups(name, category, creator) VALUES " +
+                            "('Roommates','Living','admin'),('Trip to Europe','Travel','admin'),('Office Lunch','Work','admin'),('Birthday Party','Event','admin')");
                     st.execute("INSERT INTO members(name, group_id) VALUES " +
                             "('Alice Johnson',1),('Bob Smith',1),('Carol Davis',1),('You',1)");
                     st.execute("INSERT INTO expenses(group_id,payer,amount,description) VALUES " +
@@ -96,13 +97,14 @@ public class Database {
         return list;
     }
 
-    public int addGroup(String name, String category) throws SQLException {
+    public int addGroup(String name, String category, String creator) throws SQLException {
         try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement(
-                     "INSERT INTO groups(name,category) VALUES (?,?)",
+                     "INSERT INTO groups(name,category,creator) VALUES (?,?,?)",
                      Statement.RETURN_GENERATED_KEYS)) {
             ps.setString(1, name);
             ps.setString(2, category);
+            ps.setString(3, creator);
             ps.executeUpdate();
             ResultSet rs = ps.getGeneratedKeys();
             return rs.next() ? rs.getInt(1) : -1;
@@ -133,6 +135,15 @@ public class Database {
         }
     }
 
+    public String getGroupCreator(int groupId) throws SQLException {
+        try (Connection c = connect();
+             PreparedStatement ps = c.prepareStatement("SELECT creator FROM groups WHERE id=?")) {
+            ps.setInt(1, groupId);
+            ResultSet rs = ps.executeQuery();
+            return rs.next() ? rs.getString(1) : null;
+        }
+    }
+
     public List<Group> searchGroups(String query) throws SQLException {
         List<Group> list = new ArrayList<>();
         String q = (query == null || query.isBlank()) ? "%" : "%" + query.toLowerCase() + "%";
@@ -148,53 +159,75 @@ public class Database {
         return list;
     }
 
-    // JOIN REQUEST LOGIC
+    // --------------------------------------------------------------------
+    // JOIN REQUESTS
+    // --------------------------------------------------------------------
     public void createJoinRequest(String username, int groupId) throws SQLException {
-        try (Connection c = connect();
-             PreparedStatement ps = c.prepareStatement(
-                     "INSERT INTO join_requests(username, group_id, status) VALUES (?, ?, 'PENDING')")) {
-            ps.setString(1, username);
-            ps.setInt(2, groupId);
-            ps.executeUpdate();
-        }
-    }
-
-    public List<Map<String, Object>> getPendingJoinRequestsForCreator(String creatorName) throws SQLException {
-        String sql = "SELECT jr.id, jr.username, g.id as group_id, g.name " +
-                "FROM join_requests jr JOIN groups g ON g.id = jr.group_id " +
-                "WHERE g.name IN (SELECT name FROM groups WHERE id IN " +
-                "(SELECT group_id FROM members WHERE name=?)) AND jr.status='PENDING'";
-        List<Map<String, Object>> list = new ArrayList<>();
-        try (Connection c = connect(); PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setString(1, creatorName);
-            ResultSet rs = ps.executeQuery();
-            while (rs.next()) {
-                Map<String, Object> req = new HashMap<>();
-                req.put("id", rs.getInt("id"));
-                req.put("username", rs.getString("username"));
-                req.put("group_id", rs.getInt("group_id"));
-                req.put("group_name", rs.getString("name"));
-                list.add(req);
+        try (Connection c = connect()) {
+            try (PreparedStatement check = c.prepareStatement(
+                    "SELECT 1 FROM join_requests WHERE username=? AND group_id=? AND status='PENDING'")) {
+                check.setString(1, username);
+                check.setInt(2, groupId);
+                ResultSet rs = check.executeQuery();
+                if (rs.next()) return;
+            }
+            try (PreparedStatement ps = c.prepareStatement(
+                    "INSERT INTO join_requests(username, group_id, status) VALUES (?, ?, 'PENDING')")) {
+                ps.setString(1, username);
+                ps.setInt(2, groupId);
+                ps.executeUpdate();
             }
         }
-        return list;
     }
 
-    public void approveJoinRequest(int requestId) throws SQLException {
+    public static class JoinReq {
+        public final int id, groupId;
+        public final String username, status;
+        public JoinReq(int id, int groupId, String username, String status) {
+            this.id = id;
+            this.groupId = groupId;
+            this.username = username;
+            this.status = status;
+        }
+    }
+
+    public JoinReq readJoinRequest(int id) throws SQLException {
         try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement(
-                     "UPDATE join_requests SET status='APPROVED' WHERE id=?")) {
-            ps.setInt(1, requestId);
+                     "SELECT id, group_id, username, status FROM join_requests WHERE id=?")) {
+            ps.setInt(1, id);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) {
+                return new JoinReq(rs.getInt(1), rs.getInt(2), rs.getString(3), rs.getString(4));
+            }
+            return null;
+        }
+    }
+
+    public void approveJoinRequest(int id) throws SQLException {
+        try (Connection c = connect();
+             PreparedStatement ps = c.prepareStatement("UPDATE join_requests SET status='APPROVED' WHERE id=?")) {
+            ps.setInt(1, id);
             ps.executeUpdate();
         }
     }
 
-    public void rejectJoinRequest(int requestId) throws SQLException {
+    public void rejectJoinRequest(int id) throws SQLException {
+        try (Connection c = connect();
+             PreparedStatement ps = c.prepareStatement("UPDATE join_requests SET status='REJECTED' WHERE id=?")) {
+            ps.setInt(1, id);
+            ps.executeUpdate();
+        }
+    }
+
+    public int getLatestJoinRequestId(String username, int groupId) throws SQLException {
         try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement(
-                     "UPDATE join_requests SET status='REJECTED' WHERE id=?")) {
-            ps.setInt(1, requestId);
-            ps.executeUpdate();
+                     "SELECT id FROM join_requests WHERE username=? AND group_id=? ORDER BY id DESC LIMIT 1")) {
+            ps.setString(1, username);
+            ps.setInt(2, groupId);
+            ResultSet rs = ps.executeQuery();
+            return rs.next() ? rs.getInt(1) : -1;
         }
     }
 

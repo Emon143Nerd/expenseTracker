@@ -98,6 +98,8 @@
                                 style="-fx-background-color: #00897b; -fx-text-fill: white;"/>
                         <Button text="Settle Balances" onAction="#onSettleBalances"
                                 style="-fx-background-color: #00796b; -fx-text-fill: white;"/>
+                        <Button text="View Join Requests" onAction="#onViewJoinRequests" />
+
                     </children>
                 </HBox>
             </children>

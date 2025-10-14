@@ -1,13 +1,16 @@
 package com.expensedash.server;
 
-import java.sql.SQLException;
 import java.io.*;
 import java.net.*;
+import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
-
 import com.expensedash.server.model.*;
 
+/**
+ * ServerMain — ExpenseDash Server
+ * Handles login, group management, join requests, expenses, and real-time sync.
+ */
 public class ServerMain {
     public static final int PORT = 5055;
     private static final List<ClientSession> clients = new CopyOnWriteArrayList<>();
@@ -37,112 +40,22 @@ public class ServerMain {
             String line;
             while ((line = br.readLine()) != null) {
 
+                // ───────────────────────────────────────────────
+                // REQUEST SNAPSHOT
+                // ───────────────────────────────────────────────
                 if (line.equals("REQUEST_SNAPSHOT")) {
                     if (session.username != null) {
-                        sendSnapshot(pw, session.db, session.username); // ✅ FIX: username now used
+                        sendSnapshot(pw, session.db, session.username);
                     } else {
                         pw.println("SNAPSHOT_ERR|User not logged in");
                     }
+                    continue;
                 }
 
-                else if (line.startsWith("ADD_GROUP|")) {
-                    String[] p = line.split("\\|", 3);
-                    String gName = p[1];
-                    String gCat  = p.length >= 3 ? p[2] : "";
-
-                    try {
-                        if (session.db.groupNameExists(gName)) {
-                            pw.println("ADD_GROUP_ERR|DUPLICATE");
-                        } else {
-                            int id = session.db.addGroup(gName, gCat);
-
-                            // ✅ Auto-assign creator as a member
-                            if (session.username != null)
-                                session.db.addMemberValidated(session.username, id);
-
-                            broadcast("GROUP|" + id + "|" + gName + "|" + gCat);
-                            pw.println("ADD_GROUP_OK|" + id);
-                        }
-                    } catch (Exception ex) {
-                        pw.println("ADD_GROUP_ERR|" + ex.getMessage());
-                    }
-                }
-
-                else if (line.startsWith("ADD_MEMBER|")) {
-                    String[] p = line.split("\\|", 3);
-                    String username = p[1];
-                    int groupId = Integer.parseInt(p[2]);
-                    try {
-                        int newId = session.db.addMemberValidated(username, groupId);
-                        if (newId == -1) {
-                            pw.println("ADD_MEMBER_DUP");
-                        } else {
-                            broadcast("MEMBER|" + newId + "|" + username + "|" + groupId);
-                            pw.println("ADD_MEMBER_OK|" + newId);
-                        }
-                    } catch (SQLException ex) {
-                        if ("USER_NOT_FOUND".equals(ex.getMessage())) {
-                            pw.println("ADD_MEMBER_ERR|USER_NOT_FOUND");
-                        } else {
-                            pw.println("ADD_MEMBER_ERR|" + ex.getMessage());
-                        }
-                    } catch (Exception ex) {
-                        pw.println("ADD_MEMBER_ERR|" + ex.getMessage());
-                    }
-                }
-
-                else if (line.startsWith("JOIN_GROUP|")) {
-                    String[] p = line.split("\\|", 3);
-                    int groupId = Integer.parseInt(p[1]);
-                    String username = p[2];
-                    try {
-                        session.db.createJoinRequest(username, groupId);
-                        pw.println("JOIN_REQ_OK|" + groupId);
-                        System.out.println("[Server] Join request created for user: " + username);
-                    } catch (Exception ex) {
-                        pw.println("JOIN_REQ_ERR|" + ex.getMessage());
-                    }
-                }
-
-
-                else if (line.startsWith("SEARCH_GROUP|")) {
-                    String[] p = line.split("\\|", 2);
-                    String query = p.length >= 2 ? p[1] : "";
-                    try {
-                        List<Group> results = session.db.searchGroups(query);
-                        pw.println("SEARCH_BEGIN");
-                        for (Group g : results) {
-                            pw.println("GROUP|" + g.id + "|" + g.name + "|" + g.category);
-                        }
-                        pw.println("SEARCH_END");
-                    } catch (Exception ex) {
-                        pw.println("SEARCH_ERR|" + ex.getMessage());
-                    }
-                }
-
-                else if (line.startsWith("ADD_EXPENSE|")) {
-                    String[] p = line.split("\\|", 6);
-                    int groupId = Integer.parseInt(p[1]);
-                    String payer = p[2];
-                    double amount = Double.parseDouble(p[3]);
-                    String desc = p[4];
-                    String splits = p[5];
-                    int expenseId = session.db.addExpense(groupId, payer, amount, desc);
-                    List<String> splitLines = new ArrayList<>();
-                    if (!splits.isEmpty()) {
-                        for (String pair : splits.split(",")) {
-                            String[] kv = pair.split(":");
-                            int mid = Integer.parseInt(kv[0]);
-                            double a = Double.parseDouble(kv[1]);
-                            session.db.addSplit(expenseId, mid, a);
-                            splitLines.add("SPLIT|" + expenseId + "|" + mid + "|" + a);
-                        }
-                    }
-                    broadcast("EXPENSE|" + expenseId + "|" + groupId + "|" + payer + "|" + amount + "|" + desc);
-                    for (String sp: splitLines) broadcast(sp);
-                }
-
-                else if (line.startsWith("REGISTER|")) {
+                // ───────────────────────────────────────────────
+                // REGISTER / LOGIN
+                // ───────────────────────────────────────────────
+                if (line.startsWith("REGISTER|")) {
                     String[] p = line.split("\\|", 3);
                     try {
                         boolean ok = session.db.registerUser(p[1], p[2]);
@@ -156,17 +69,18 @@ public class ServerMain {
                         pw.println("REGISTER_ERR|" + e.getMessage());
                         e.printStackTrace();
                     }
+                    continue;
                 }
 
-                else if (line.startsWith("LOGIN|")) {
+                if (line.startsWith("LOGIN|")) {
                     String[] p = line.split("\\|", 3);
                     try {
                         boolean ok = session.db.validateUser(p[1], p[2]);
                         if (ok) {
-                            session.username = p[1]; // ✅ FIX: store logged-in username
+                            session.username = p[1];
                             pw.println("LOGIN_OK");
                             System.out.println("[Server] User logged in: " + session.username);
-                            sendSnapshot(pw, session.db, session.username); // ✅ FIX: now valid
+                            sendSnapshot(pw, session.db, session.username);
                         } else {
                             pw.println("LOGIN_FAIL");
                         }
@@ -174,35 +88,186 @@ public class ServerMain {
                         pw.println("LOGIN_ERR|" + e.getMessage());
                         e.printStackTrace();
                     }
+                    continue;
                 }
-                else if (line.startsWith("APPROVE_JOIN|")) {
+
+                // ───────────────────────────────────────────────
+                // GROUP CREATION (auto add creator as member)
+                // ───────────────────────────────────────────────
+                if (line.startsWith("ADD_GROUP|")) {
+                    String[] p = line.split("\\|", 3);
+                    String gName = p[1];
+                    String gCat = p.length >= 3 ? p[2] : "";
+                    try {
+                        if (session.db.groupNameExists(gName)) {
+                            pw.println("ADD_GROUP_ERR|DUPLICATE");
+                        } else {
+                            int gid = session.db.addGroup(gName, gCat, session.username);
+                            session.db.addMemberValidated(session.username, gid);
+                            pw.println("ADD_GROUP_OK|" + gid);
+                            sendSnapshot(pw, session.db, session.username);
+                        }
+                    } catch (Exception ex) {
+                        pw.println("ADD_GROUP_ERR|" + ex.getMessage());
+                    }
+                    continue;
+                }
+
+                // ───────────────────────────────────────────────
+                // SEARCH GROUPS
+                // ───────────────────────────────────────────────
+                if (line.startsWith("SEARCH_GROUP|")) {
+                    String[] p = line.split("\\|", 2);
+                    String query = p.length >= 2 ? p[1] : "";
+                    try {
+                        List<Group> results = session.db.searchGroups(query);
+                        pw.println("SEARCH_BEGIN");
+                        for (Group g : results) {
+                            pw.println("SEARCH_RESULT|" + g.id + "|" + g.name + "|" + g.category);
+                        }
+                        pw.println("SEARCH_END");
+                    } catch (Exception ex) {
+                        pw.println("SEARCH_ERR|" + ex.getMessage());
+                    }
+                    continue;
+                }
+
+                // ───────────────────────────────────────────────
+                // JOIN REQUEST FLOW (manual approval)
+                // ───────────────────────────────────────────────
+                if (line.startsWith("JOIN_GROUP|")) {
+                    int groupId = Integer.parseInt(line.split("\\|")[1]);
+                    try {
+                        session.db.createJoinRequest(session.username, groupId);
+                        pw.println("JOIN_QUEUED|" + groupId);
+
+                        // Notify group creator live
+                        String creator = session.db.getGroupCreator(groupId);
+                        if (creator != null) {
+                            for (ClientSession cs : clients) {
+                                if (creator.equals(cs.username)) {
+                                    PrintWriter opw = new PrintWriter(new OutputStreamWriter(cs.socket.getOutputStream()), true);
+                                    Group g = session.db.getGroupById(groupId);
+                                    int reqId = session.db.getLatestJoinRequestId(session.username, groupId);
+                                    opw.println("JOIN_REQ|" + reqId + "|" + groupId + "|" + g.name + "|" + session.username);
+                                    break;
+                                }
+                            }
+                        }
+                    } catch (Exception ex) {
+                        pw.println("JOIN_ERR|" + ex.getMessage());
+                    }
+                    continue;
+                }
+
+                if (line.startsWith("APPROVE_JOIN|")) {
                     int reqId = Integer.parseInt(line.split("\\|")[1]);
                     try {
+                        var req = session.db.readJoinRequest(reqId);
+                        if (req == null || !"PENDING".equals(req.status)) {
+                            pw.println("APPROVE_ERR|NOT_FOUND");
+                            continue;
+                        }
+                        String creator = session.db.getGroupCreator(req.groupId);
+                        if (!Objects.equals(creator, session.username)) {
+                            pw.println("APPROVE_ERR|NOT_CREATOR");
+                            continue;
+                        }
+
                         session.db.approveJoinRequest(reqId);
+                        session.db.addMemberValidated(req.username, req.groupId);
+
+                        // Notify the joiner
+                        for (ClientSession cs : clients) {
+                            if (req.username.equals(cs.username)) {
+                                PrintWriter opw = new PrintWriter(new OutputStreamWriter(cs.socket.getOutputStream()), true);
+                                Group g = session.db.getGroupById(req.groupId);
+                                opw.println("JOIN_OK|" + req.groupId + "|" + g.name);
+                                sendSnapshot(opw, cs.db, cs.username);
+                            }
+                        }
+
+                        sendSnapshot(pw, session.db, session.username);
                         pw.println("APPROVE_OK");
                     } catch (Exception ex) {
                         pw.println("APPROVE_ERR|" + ex.getMessage());
                     }
+                    continue;
                 }
 
-                else if (line.startsWith("REJECT_JOIN|")) {
+                if (line.startsWith("REJECT_JOIN|")) {
                     int reqId = Integer.parseInt(line.split("\\|")[1]);
                     try {
+                        var req = session.db.readJoinRequest(reqId);
+                        if (req == null || !"PENDING".equals(req.status)) {
+                            pw.println("REJECT_ERR|NOT_FOUND");
+                            continue;
+                        }
+                        String creator = session.db.getGroupCreator(req.groupId);
+                        if (!Objects.equals(creator, session.username)) {
+                            pw.println("REJECT_ERR|NOT_CREATOR");
+                            continue;
+                        }
+
                         session.db.rejectJoinRequest(reqId);
+
+                        // Notify joiner
+                        for (ClientSession cs : clients) {
+                            if (req.username.equals(cs.username)) {
+                                PrintWriter opw = new PrintWriter(new OutputStreamWriter(cs.socket.getOutputStream()), true);
+                                Group g = session.db.getGroupById(req.groupId);
+                                opw.println("JOIN_REJ|" + req.groupId + "|" + g.name);
+                            }
+                        }
+
                         pw.println("REJECT_OK");
                     } catch (Exception ex) {
                         pw.println("REJECT_ERR|" + ex.getMessage());
                     }
+                    continue;
                 }
 
-
-                else if (line.startsWith("SETTLE|")) {
-                    String[] p = line.split("\\|", 2);
+                // ───────────────────────────────────────────────
+                // ADD EXPENSE (server auto-splits equally)
+                // ───────────────────────────────────────────────
+                if (line.startsWith("ADD_EXPENSE|")) {
+                    String[] p = line.split("\\|", 5);
                     int groupId = Integer.parseInt(p[1]);
+                    String payer = p[2];
+                    double amount = Double.parseDouble(p[3]);
+                    String desc = p[4];
                     try {
-                        session.db.settleGroup(groupId);
-                        broadcast("RESET|" + groupId);
+                        int expId = session.db.addExpense(groupId, payer, amount, desc);
+                        var mems = session.db.getMembersForGroup(groupId);
+                        int n = mems.size() > 0 ? mems.size() : 1;
+                        double per = Math.round((amount / n) * 100.0) / 100.0;
+                        double running = 0.0;
+                        for (int i = 0; i < mems.size(); i++) {
+                            int mid = mems.get(i).id;
+                            double part = (i == mems.size() - 1) ? (amount - running) : per;
+                            running += part;
+                            session.db.addSplit(expId, mid, part);
+                        }
+                        broadcast("EXPENSE|" + expId + "|" + groupId + "|" + payer + "|" + amount + "|" + desc);
+                        for (var sp : session.db.getSplitsForExpense(expId)) {
+                            broadcast("SPLIT|" + expId + "|" + sp.memberId + "|" + sp.amount);
+                        }
+                    } catch (Exception ex) {
+                        pw.println("ADD_EXPENSE_ERR|" + ex.getMessage());
+                    }
+                    continue;
+                }
+
+                // ───────────────────────────────────────────────
+                // SETTLE GROUP
+                // ───────────────────────────────────────────────
+                if (line.startsWith("SETTLE|")) {
+                    int gid = Integer.parseInt(line.split("\\|")[1]);
+                    try {
+                        session.db.settleGroup(gid);
+                        broadcast("RESET|" + gid);
                     } catch (Exception ignore) {}
+                    continue;
                 }
             }
 
@@ -213,25 +278,22 @@ public class ServerMain {
         }
     }
 
-    // ✅ FIX: Updated sendSnapshot to be non-static friendly
+    // ───────────────────────────────────────────────
+    // SNAPSHOT: send user-specific data
+    // ───────────────────────────────────────────────
     private static void sendSnapshot(PrintWriter pw, Database db, String username) {
         try {
             pw.println("SNAPSHOT_BEGIN");
-
-            // ✅ Only groups where user is a member or creator
             List<Integer> userGroups = db.getGroupsForUser(username);
-
             for (int gid : userGroups) {
                 var g = db.getGroupById(gid);
                 pw.println("GROUP|" + g.id + "|" + g.name + "|" + g.category);
             }
-
             for (int gid : userGroups) {
                 for (var m : db.getMembersForGroup(gid)) {
                     pw.println("MEMBER|" + m.id + "|" + m.name + "|" + gid);
                 }
             }
-
             for (int gid : userGroups) {
                 for (var e : db.getExpensesForGroup(gid)) {
                     pw.println("EXPENSE|" + e.id + "|" + gid + "|" + e.payer + "|" + e.amount + "|" + e.desc);
@@ -240,7 +302,6 @@ public class ServerMain {
                     }
                 }
             }
-
             pw.println("SNAPSHOT_END");
         } catch (Exception e) {
             pw.println("SNAPSHOT_ERR|" + e.getMessage());
@@ -259,7 +320,7 @@ public class ServerMain {
     private static class ClientSession {
         Socket socket;
         Database db;
-        String username; // ✅ FIX: added per-client username
+        String username;
         ClientSession(Socket s, Database db) {
             this.socket = s;
             this.db = db;

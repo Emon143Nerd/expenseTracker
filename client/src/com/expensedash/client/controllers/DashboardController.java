@@ -31,8 +31,10 @@ public class DashboardController implements Initializable {
     @FXML private TableColumn<BalanceRow, String> colStatus;
     @FXML private PieChart pieChart;
 
-    // --- References ---
-    private JoinGroupController joinGroupController;
+    // New fields for Add Expense section
+    @FXML private TextField expenseAmount;
+    @FXML private TextField expenseDescription;
+
     private NetClient net;
 
     // --- Data Structures ---
@@ -57,8 +59,9 @@ public class DashboardController implements Initializable {
             }
         });
 
-        // Group search in dashboard
+        // Group search
         groupSearch.textProperty().addListener((obs, old, query) -> {
+            if (net == null) return;
             if (query == null || query.isBlank()) {
                 net.send("REQUEST_SNAPSHOT");
                 return;
@@ -77,7 +80,6 @@ public class DashboardController implements Initializable {
             showError("Failed to request data: " + e.getMessage());
         }
 
-        // Listen for messages from the server
         this.net.setMessageHandler(this::onMessage);
     }
 
@@ -85,63 +87,38 @@ public class DashboardController implements Initializable {
     private void onMessage(String line) {
         if (line == null || line.isBlank()) return;
 
-        // ── Search & join-request notifications (handled BEFORE the regular switch) ──
+        // ── Handle search feedback ──
         if (line.equals("SEARCH_BEGIN")) {
             Platform.runLater(() -> groupList.getItems().clear());
             return;
         }
         if (line.startsWith("SEARCH_RESULT|")) {
-            // SEARCH_RESULT|<groupId>|<name>|<category>
             String[] p = line.split("\\|", 4);
             if (p.length >= 4) {
-                String display = p[2]; // show clean name
+                String display = p[2];
                 Platform.runLater(() -> {
-                    if (!groupList.getItems().contains(display)) {
+                    if (!groupList.getItems().contains(display))
                         groupList.getItems().add(display);
-                    }
                 });
             }
             return;
         }
         if (line.equals("SEARCH_END")) {
-            // Optionally auto-select first result
             Platform.runLater(() -> {
-                if (!groupList.getItems().isEmpty()) groupList.getSelectionModel().select(0);
+                if (!groupList.getItems().isEmpty())
+                    groupList.getSelectionModel().select(0);
             });
             return;
         }
 
-        // Creator receives a real-time join request popup
-        if (line.startsWith("JOIN_REQ|")) {
-            // JOIN_REQ|<requestId>|<groupId>|<groupName>|<username>
-            String[] p = line.split("\\|", 5);
-            if (p.length == 5) {
-                int reqId = Integer.parseInt(p[1]);
-                int gid   = Integer.parseInt(p[2]);
-                String gName = p[3];
-                String who   = p[4];
-                Platform.runLater(() -> askApproveJoin(reqId, gid, gName, who));
-            }
-            return;
-        }
-
+        // ── Handle join and snapshot ──
         if (line.startsWith("JOIN_OK|")) {
-            // JOIN_OK|<groupId>|<groupName>
             String[] p = line.split("\\|", 3);
             String gName = (p.length >= 3) ? p[2] : "group";
             Platform.runLater(() -> {
                 showInfo("You joined \"" + gName + "\"");
-                // Ask fresh snapshot so your left panel shows ONLY your groups
                 if (net != null) net.send("REQUEST_SNAPSHOT");
             });
-            return;
-        }
-
-        if (line.startsWith("JOIN_REJ|")) {
-            // JOIN_REJ|<groupId>|<groupName>
-            String[] p = line.split("\\|", 3);
-            String gName = (p.length >= 3) ? p[2] : "group";
-            Platform.runLater(() -> showError("Your request to join \"" + gName + "\" was rejected."));
             return;
         }
 
@@ -154,7 +131,7 @@ public class DashboardController implements Initializable {
             return;
         }
 
-        // ── Regular data stream from server ──
+        // ── Regular data from server ──
         String[] p = line.split("\\|");
         try {
             switch (p[0]) {
@@ -186,6 +163,10 @@ public class DashboardController implements Initializable {
                     int gid = Integer.parseInt(p[1]);
                     if (gid == selectedGroup) { expenses.clear(); splits.clear(); }
                 }
+                case "MEMBER_ADDED" -> {
+                    // Trigger snapshot refresh when new member joins
+                    if (net != null) net.send("REQUEST_SNAPSHOT");
+                }
             }
             Platform.runLater(this::refreshUI);
         } catch (Exception e) {
@@ -193,87 +174,38 @@ public class DashboardController implements Initializable {
         }
     }
 
-    // --- Buttons ---
-
-    @FXML
-    private void onManageGroups() {
-        try {
-            var url = getClass().getResource("/fxml/group_manager.fxml");
-            FXMLLoader loader = new FXMLLoader(url);
-            Stage stage = new Stage();
-            stage.setTitle("Groups & Members");
-            stage.setScene(new Scene(loader.load(), 420, 420));
-
-            GroupManagerController controller = loader.getController();
-            if (controller == null)
-                throw new IllegalStateException("GroupManagerController not loaded from FXML");
-
-            if (net == null)
-                throw new IllegalStateException("Network client (net) is null — initWithNetClient() not called.");
-
-            controller.init(net::send, groups);
-            stage.show();
-        } catch (Exception e) {
-            e.printStackTrace();
-            showError("Failed to open Group Manager:\n" + e.getMessage());
-        }
-    }
-
-    @FXML
-    private void onJoinGroup() {
-        try {
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/join_group.fxml"));
-            Stage stage = new Stage();
-            stage.setTitle("Join Group");
-            stage.setScene(new Scene(loader.load(), 400, 400));
-
-            joinGroupController = loader.getController();
-            joinGroupController.init(net::send);
-
-            stage.show();
-        } catch (Exception e) {
-            e.printStackTrace();
-            showError("Failed to open join group window: " + e.getMessage());
-        }
-    }
+    // --- UI Actions ---
 
     @FXML
     private void onAddExpense() {
-        TextInputDialog dialog = new TextInputDialog("12.50");
-        dialog.setHeaderText("Add expense (payer: " + Session.getCurrentUser() + ")");
-        dialog.setContentText("Enter amount:");
+        try {
+            String amountText = expenseAmount.getText();
+            String desc = expenseDescription.getText();
 
-        dialog.showAndWait().ifPresent(val -> {
-            try {
-                double amt = Double.parseDouble(val);
-                if (amt <= 0) {
-                    showError("Please enter a valid positive amount.");
-                    return;
-                }
-
-                List<Integer> mids = new ArrayList<>(members.keySet());
-                if (mids.isEmpty()) {
-                    showError("No members found in this group.");
-                    return;
-                }
-
-                double per = Math.round((amt / mids.size()) * 100.0) / 100.0;
-                StringBuilder sb = new StringBuilder();
-                for (int i = 0; i < mids.size(); i++) {
-                    if (i > 0) sb.append(",");
-                    sb.append(mids.get(i)).append(":").append(per);
-                }
-
-                net.send("ADD_EXPENSE|" + selectedGroup + "|" + Session.getCurrentUser()
-                        + "|" + amt + "|New expense|" + sb);
-
-                showInfo("Expense added successfully!");
-            } catch (NumberFormatException e) {
-                showError("Invalid amount entered.");
-            } catch (Exception e) {
-                showError("Failed to add expense: " + e.getMessage());
+            if (amountText == null || amountText.isBlank()) {
+                showError("Please enter an amount.");
+                return;
             }
-        });
+            if (desc == null || desc.isBlank()) {
+                desc = "General expense";
+            }
+
+            double amt = Double.parseDouble(amountText);
+            if (amt <= 0) {
+                showError("Please enter a valid positive amount.");
+                return;
+            }
+
+            net.send("ADD_EXPENSE|" + selectedGroup + "|" + Session.getCurrentUser()
+                    + "|" + amt + "|" + desc);
+
+            expenseAmount.clear();
+            expenseDescription.clear();
+        } catch (NumberFormatException e) {
+            showError("Invalid amount entered.");
+        } catch (Exception e) {
+            showError("Failed to add expense: " + e.getMessage());
+        }
     }
 
     @FXML
@@ -292,6 +224,54 @@ public class DashboardController implements Initializable {
     }
 
     @FXML
+    private void onCreateGroup() {
+        TextInputDialog dialog = new TextInputDialog();
+        dialog.setHeaderText("Create New Group");
+        dialog.setContentText("Enter group name:");
+
+        dialog.showAndWait().ifPresent(gName -> {
+            if (gName.isBlank()) {
+                showError("Group name cannot be empty.");
+                return;
+            }
+
+            try {
+                net.send("ADD_GROUP|" + gName + "|General");
+                showInfo("Group \"" + gName + "\" created successfully!");
+            } catch (Exception e) {
+                showError("Failed to create group: " + e.getMessage());
+            }
+        });
+    }
+
+
+    @FXML
+    private void onRefresh() {
+        if (net != null) {
+            net.send("REQUEST_SNAPSHOT");
+            showInfo("Dashboard refreshed.");
+        }
+    }
+
+    @FXML
+    private void onJoinGroup() {
+        try {
+            String selected = groupList.getSelectionModel().getSelectedItem();
+            if (selected == null) {
+                showError("Please select a group to join.");
+                return;
+            }
+
+            int gid = groupNameToId(selected);
+            net.send("JOIN_GROUP|" + gid);
+            showInfo("Joining group \"" + selected + "\"...");
+        } catch (Exception e) {
+            showError("Failed to join group: " + e.getMessage());
+        }
+    }
+
+
+    @FXML
     private void onViewHistory() {
         try {
             FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/history.fxml"));
@@ -300,12 +280,11 @@ public class DashboardController implements Initializable {
             stage.setScene(new Scene(loader.load(), 520, 420));
 
             var historyCtrl = loader.getController();
-            if (historyCtrl instanceof com.expensedash.client.controllers.HistoryController hc) {
-                var rows = new ArrayList<com.expensedash.client.controllers.HistoryController.Row>();
+            if (historyCtrl instanceof HistoryController hc) {
+                var rows = new ArrayList<HistoryController.Row>();
                 for (Expense e : expenses.values()) {
                     if (e.groupId != selectedGroup) continue;
-                    rows.add(new com.expensedash.client.controllers.HistoryController.Row(
-                            e.description, e.payer, String.format("$%.2f", e.amount)));
+                    rows.add(new HistoryController.Row(e.description, e.payer, String.format("$%.2f", e.amount)));
                 }
                 hc.init(rows);
             }
@@ -316,25 +295,6 @@ public class DashboardController implements Initializable {
             showError("Failed to open history: " + e.getMessage());
         }
     }
-
-    @FXML
-    private void onViewJoinRequests() {
-        try {
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/join_requests.fxml"));
-            Stage stage = new Stage();
-            stage.setTitle("Pending Join Requests");
-            stage.setScene(new Scene(loader.load(), 400, 400));
-
-            JoinRequestsController controller = loader.getController();
-            controller.init(net::send, Session.getCurrentUser());
-
-            stage.show();
-        } catch (Exception e) {
-            e.printStackTrace();
-            showError("Failed to open Join Requests window: " + e.getMessage());
-        }
-    }
-
 
     @FXML
     private void onLogout() {
@@ -352,34 +312,6 @@ public class DashboardController implements Initializable {
     }
 
     // --- UI Helpers ---
-
-    /**
-     * Shows a confirmation dialog when a join request arrives.
-     */
-    private void askApproveJoin(int reqId, int groupId, String groupName, String who) {
-        Platform.runLater(() -> {
-            Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-            alert.setTitle("Join Request");
-            alert.setHeaderText("Join request received");
-            alert.setContentText(who + " wants to join your group \"" + groupName + "\".");
-
-            ButtonType approveBtn = new ButtonType("Approve");
-            ButtonType rejectBtn = new ButtonType("Reject");
-            alert.getButtonTypes().setAll(approveBtn, rejectBtn, ButtonType.CANCEL);
-
-            alert.showAndWait().ifPresent(btn -> {
-                if (btn == approveBtn) {
-                    net.send("APPROVE_JOIN|" + reqId);
-                    showInfo("You approved " + who + " for group \"" + groupName + "\"");
-                } else if (btn == rejectBtn) {
-                    net.send("REJECT_JOIN|" + reqId);
-                    showInfo("You rejected " + who + " for group \"" + groupName + "\"");
-                }
-            });
-        });
-    }
-
-
     private void refreshUI() {
         ObservableList<String> gitems = FXCollections.observableArrayList(groups.values());
         groupList.setItems(gitems);

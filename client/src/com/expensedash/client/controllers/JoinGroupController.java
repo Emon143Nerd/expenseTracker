@@ -1,59 +1,77 @@
 package com.expensedash.client.controllers;
 
-import com.expensedash.client.Session;
+import javafx.application.Platform;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
-import javafx.stage.Stage;
-
-import java.util.*;
 import java.util.function.Consumer;
 
+/**
+ * JoinGroupController — simplified instant join version.
+ */
 public class JoinGroupController {
 
     @FXML private TextField searchField;
-    @FXML private ListView<String> resultList;
+    @FXML private ListView<String> resultsList;
+    @FXML private Button joinButton;
+    @FXML private Label statusLabel;
 
-    private Consumer<String> sender;
-    private final Map<String, Integer> nameToId = new HashMap<>();
+    private Consumer<String> send;
+    private final ObservableList<String> groupResults = FXCollections.observableArrayList();
+    private final java.util.Map<String, Integer> groupNameToId = new java.util.HashMap<>();
 
     public void init(Consumer<String> sender) {
-        this.sender = sender;
+        this.send = sender;
+        resultsList.setItems(groupResults);
+
+        // Search as user types
+        searchField.textProperty().addListener((obs, old, query) -> {
+            if (query == null || query.isBlank()) {
+                groupResults.clear();
+                groupNameToId.clear();
+                return;
+            }
+            send.accept("SEARCH_GROUP|" + query.trim());
+        });
+    }
+
+    /**
+     * Called externally when search results arrive (optional future hook).
+     */
+    public void addGroupResult(int gid, String name, String category) {
+        Platform.runLater(() -> {
+            if (!groupNameToId.containsKey(name)) {
+                groupResults.add(name);
+                groupNameToId.put(name, gid);
+            }
+        });
     }
 
     @FXML
-    private void onSearch() {
-        String query = searchField.getText().trim();
-        if (query.isEmpty()) {
-            new Alert(Alert.AlertType.WARNING, "Enter a search term.").showAndWait();
-            return;
-        }
-        sender.accept("SEARCH_GROUP|" + query);
-    }
-
-    public void updateResults(String display, int groupId) {
-        nameToId.put(display, groupId);
-        resultList.getItems().add(display);
-    }
-
-    public void clearResults() {
-        resultList.getItems().clear();
-        nameToId.clear();
-    }
-
-    @FXML
-    private void onJoin() {
-        String selected = resultList.getSelectionModel().getSelectedItem();
+    private void onJoinSelectedGroup() {
+        String selected = resultsList.getSelectionModel().getSelectedItem();
         if (selected == null) {
-            new Alert(Alert.AlertType.WARNING, "Select a group to join.").showAndWait();
+            statusLabel.setText("Please select a group to join.");
             return;
         }
-        int gid = nameToId.get(selected);
-        sender.accept("JOIN_GROUP|" + gid + "|" + Session.getCurrentUser());
-        new Alert(Alert.AlertType.INFORMATION, "Join request sent to group creator.").showAndWait();
+
+        Integer gid = groupNameToId.get(selected);
+        if (gid == null) {
+            statusLabel.setText("Group ID not found.");
+            return;
+        }
+
+        try {
+            send.accept("JOIN_GROUP|" + gid);
+            statusLabel.setText("Joining group \"" + selected + "\"...");
+        } catch (Exception e) {
+            statusLabel.setText("Error joining: " + e.getMessage());
+        }
     }
 
     @FXML
     private void onClose() {
-        ((Stage) resultList.getScene().getWindow()).close();
+        searchField.getScene().getWindow().hide();
     }
 }

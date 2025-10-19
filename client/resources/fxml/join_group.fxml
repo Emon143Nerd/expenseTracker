@@ -1,17 +1,28 @@
 <?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 
-<VBox xmlns="http://javafx.com/javafx/21"
-      xmlns:fx="http://javafx.com/fxml/1"
-      fx:controller="com.expensedash.client.controllers.JoinGroupController"
-      spacing="10" style="-fx-padding: 12;">
-    <children>
-        <Label text="Search and Join Group" style="-fx-font-weight: bold;"/>
-        <TextField fx:id="searchField" promptText="Enter group name..."/>
-        <Button text="Search" onAction="#onSearch"/>
-        <ListView fx:id="resultList" prefHeight="200"/>
-        <Button text="Request to Join" onAction="#onJoin"/>
-        <Button text="Close" onAction="#onClose"/>
-    </children>
-</VBox>
+<BorderPane xmlns="http://javafx.com/javafx/21"
+            xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.expensedash.client.controllers.JoinGroupController"
+            style="-fx-background-color: #f9fafa;">
+    <top>
+        <Label text="Join a Group"
+               style="-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #004d40; -fx-padding: 10;"/>
+    </top>
+
+    <center>
+        <VBox spacing="10.0" padding="10.0">
+            <children>
+                <TextField fx:id="searchField" promptText="Search groups..." />
+                <ListView fx:id="resultsList" prefHeight="250.0" />
+                <Button fx:id="joinButton" text="Join Selected Group"
+                        onAction="#onJoinSelectedGroup"
+                        style="-fx-background-color: #009688; -fx-text-fill: white;"/>
+                <Label fx:id="statusLabel" textFill="gray" wrapText="true"/>
+            </children>
+        </VBox>
+    </center>
+</BorderPane>

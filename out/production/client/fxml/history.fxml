@@ -1,18 +1,46 @@
 <?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
-<VBox xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
-      fx:controller="com.expensedash.client.controllers.HistoryController"
-      spacing="10" padding="12">
-    <children>
-        <Label text="Expense History" style="-fx-font-size: 16px; -fx-font-weight: bold;"/>
-        <TableView fx:id="table">
-            <columns>
-                <TableColumn fx:id="colDesc" text="Description" prefWidth="220"/>
-                <TableColumn fx:id="colPayer" text="Payer" prefWidth="120"/>
-                <TableColumn fx:id="colAmount" text="Amount" prefWidth="100"/>
-            </columns>
-        </TableView>
-        <Button text="Close" onAction="#onClose"/>
-    </children>
-</VBox>
+
+<BorderPane xmlns="http://javafx.com/javafx/21"
+            xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.expensedash.client.controllers.HistoryController"
+            style="-fx-background-color: #fafafa;">
+
+    <!-- TITLE BAR -->
+    <top>
+        <HBox spacing="8.0" style="-fx-background-color: #004d40; -fx-padding: 10;">
+            <children>
+                <Label text="Expense History"
+                       style="-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: white;"/>
+            </children>
+        </HBox>
+    </top>
+
+    <!-- MAIN CONTENT -->
+    <center>
+        <VBox spacing="10.0" padding="10.0">
+            <children>
+                <TableView fx:id="historyTable" VBox.vgrow="ALWAYS">
+                    <columns>
+                        <TableColumn fx:id="colDescription" text="Description" prefWidth="220.0"/>
+                        <TableColumn fx:id="colPayer" text="Paid By" prefWidth="150.0"/>
+                        <TableColumn fx:id="colAmount" text="Amount" prefWidth="100.0"/>
+                    </columns>
+                </TableView>
+            </children>
+        </VBox>
+    </center>
+
+    <!-- BOTTOM BAR -->
+    <bottom>
+        <HBox spacing="10.0" alignment="CENTER_RIGHT" style="-fx-padding: 8;">
+            <children>
+                <Button text="Close" onAction="#onClose"
+                        style="-fx-background-color: #00796b; -fx-text-fill: white;"/>
+            </children>
+        </HBox>
+    </bottom>
+</BorderPane>

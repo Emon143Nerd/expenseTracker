@@ -10,18 +10,25 @@
             fx:controller="com.expensedash.client.controllers.DashboardController"
             style="-fx-background-color: #f9fafa;">
 
-    <!-- LEFT PANEL (Groups) -->
+    <!-- LEFT PANEL -->
     <left>
         <VBox spacing="10.0" prefWidth="300.0" style="-fx-background-color: #e0f2f1;">
             <children>
                 <Label text="My Groups"
                        style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #004d40;"/>
                 <TextField fx:id="groupSearch" promptText="Search groups..."/>
-                <Button text="+ Create New Group" onAction="#onManageGroups"
+                <Button text="+ Create New Group" onAction="#onCreateGroup"
                         style="-fx-background-color: #009688; -fx-text-fill: white;"/>
-                <ListView fx:id="groupList" VBox.vgrow="ALWAYS"/>
-                <Button text="Join Group" onAction="#onJoinGroup"
-                        style="-fx-background-color: #009688; -fx-text-fill: white;"/>
+
+                <!-- FIXED SECTION -->
+                <ListView fx:id="groupList">
+                    <VBox.vgrow>ALWAYS</VBox.vgrow>
+                </ListView>
+
+                <Button text="Join Selected Group" onAction="#onJoinGroup"
+                        style="-fx-background-color: #00796b; -fx-text-fill: white;"/>
+                <Button text="🔄 Refresh Dashboard" onAction="#onRefresh"
+                        style="-fx-background-color: #4caf50; -fx-text-fill: white;"/>
             </children>
             <padding>
                 <Insets top="16.0" right="12.0" bottom="16.0" left="12.0"/>
@@ -29,12 +36,13 @@
         </VBox>
     </left>
 
-    <!-- CENTER (Totals, table, chart, actions) -->
+    <!-- CENTER CONTENT -->
     <center>
         <VBox spacing="12.0">
             <padding>
                 <Insets top="16.0" right="16.0" bottom="16.0" left="16.0"/>
             </padding>
+
             <children>
                 <Label fx:id="welcomeLabel"
                        text="Welcome!"
@@ -81,6 +89,7 @@
                                 </TableView>
                             </content>
                         </TitledPane>
+
                         <TitledPane text="Group Expense Distribution">
                             <content>
                                 <PieChart fx:id="pieChart" prefWidth="400.0" prefHeight="300.0"/>
@@ -89,17 +98,45 @@
                     </children>
                 </HBox>
 
-                <!-- Actions -->
+                <!-- Add Expense Section -->
+                <VBox spacing="8.0"
+                      style="-fx-background-color: #f0f0f0; -fx-padding: 10;">
+                    <Label text="Add New Expense"
+                           style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #004d40;"/>
+                    <HBox spacing="10.0">
+                        <TextField fx:id="expenseAmount"
+                                   promptText="Enter amount (e.g., 45.00)"
+                                   style="-fx-pref-width: 150;
+                          -fx-text-fill: black;
+                          -fx-background-color: white;
+                          -fx-border-color: #bdbdbd;
+                          -fx-border-radius: 4;
+                          -fx-background-radius: 4;"/>
+                        <TextField fx:id="expenseDescription"
+                                   promptText="Enter description (e.g., Lunch at cafe)"
+                                   style="-fx-pref-width: 250;
+                          -fx-text-fill: black;
+                          -fx-background-color: white;
+                          -fx-border-color: #bdbdbd;
+                          -fx-border-radius: 4;
+                          -fx-background-radius: 4;"/>
+                        <Button text="➕ Add Expense"
+                                onAction="#onAddExpense"
+                                style="-fx-background-color: #26a69a;
+                       -fx-text-fill: white;
+                       -fx-font-weight: bold;
+                       -fx-cursor: hand;"/>
+                    </HBox>
+                </VBox>
+
+
+                <!-- Bottom Actions -->
                 <HBox spacing="10.0">
                     <children>
-                        <Button text="+ Add Expense" onAction="#onAddExpense"
-                                style="-fx-background-color: #26a69a; -fx-text-fill: white;"/>
                         <Button text="View History" onAction="#onViewHistory"
                                 style="-fx-background-color: #00897b; -fx-text-fill: white;"/>
                         <Button text="Settle Balances" onAction="#onSettleBalances"
                                 style="-fx-background-color: #00796b; -fx-text-fill: white;"/>
-                        <Button text="View Join Requests" onAction="#onViewJoinRequests" />
-
                     </children>
                 </HBox>
             </children>
@@ -108,7 +145,8 @@
 
     <!-- TOP BAR -->
     <top>
-        <HBox spacing="8.0" style="-fx-background-color: #004d40; -fx-border-color: #00695c; -fx-border-width: 0 0 1 0;">
+        <HBox spacing="8.0"
+              style="-fx-background-color: #004d40; -fx-border-color: #00695c; -fx-border-width: 0 0 1 0;">
             <padding>
                 <Insets top="12.0" right="12.0" bottom="12.0" left="12.0"/>
             </padding>

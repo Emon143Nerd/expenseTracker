@@ -162,74 +162,68 @@ public class Database {
     // --------------------------------------------------------------------
     // JOIN REQUESTS
     // --------------------------------------------------------------------
-    public void createJoinRequest(String username, int groupId) throws SQLException {
-        try (Connection c = connect()) {
-            try (PreparedStatement check = c.prepareStatement(
-                    "SELECT 1 FROM join_requests WHERE username=? AND group_id=? AND status='PENDING'")) {
-                check.setString(1, username);
-                check.setInt(2, groupId);
-                ResultSet rs = check.executeQuery();
-                if (rs.next()) return;
-            }
-            try (PreparedStatement ps = c.prepareStatement(
-                    "INSERT INTO join_requests(username, group_id, status) VALUES (?, ?, 'PENDING')")) {
-                ps.setString(1, username);
-                ps.setInt(2, groupId);
-                ps.executeUpdate();
-            }
-        }
-    }
+//    public void createJoinRequest(String username, int groupId) throws SQLException {
+//        try (Connection c = connect()) {
+//            try (PreparedStatement check = c.prepareStatement(
+//                    "SELECT 1 FROM join_requests WHERE username=? AND group_id=? AND status='PENDING'")) {
+//                check.setString(1, username);
+//                check.setInt(2, groupId);
+//                ResultSet rs = check.executeQuery();
+//                if (rs.next()) return;
+//            }
+//            try (PreparedStatement ps = c.prepareStatement(
+//                    "INSERT INTO join_requests(username, group_id, status) VALUES (?, ?, 'PENDING')")) {
+//                ps.setString(1, username);
+//                ps.setInt(2, groupId);
+//                ps.executeUpdate();
+//            }
+//        }
+//    }
 
-    public static class JoinReq {
-        public final int id, groupId;
-        public final String username, status;
-        public JoinReq(int id, int groupId, String username, String status) {
-            this.id = id;
-            this.groupId = groupId;
-            this.username = username;
-            this.status = status;
-        }
-    }
+//    public static class JoinReq {
+//        public final int id, groupId;
+//        public final String username, status;
+//        public JoinReq(int id, int groupId, String username, String status) {
+//            this.id = id;
+//            this.groupId = groupId;
+//            this.username = username;
+//            this.status = status;
+//        }
+//    }
 
-    public JoinReq readJoinRequest(int id) throws SQLException {
-        try (Connection c = connect();
-             PreparedStatement ps = c.prepareStatement(
-                     "SELECT id, group_id, username, status FROM join_requests WHERE id=?")) {
-            ps.setInt(1, id);
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) {
-                return new JoinReq(rs.getInt(1), rs.getInt(2), rs.getString(3), rs.getString(4));
-            }
-            return null;
-        }
-    }
-
-    public void approveJoinRequest(int id) throws SQLException {
-        try (Connection c = connect();
-             PreparedStatement ps = c.prepareStatement("UPDATE join_requests SET status='APPROVED' WHERE id=?")) {
-            ps.setInt(1, id);
-            ps.executeUpdate();
-        }
-    }
-
-    public void rejectJoinRequest(int id) throws SQLException {
-        try (Connection c = connect();
-             PreparedStatement ps = c.prepareStatement("UPDATE join_requests SET status='REJECTED' WHERE id=?")) {
-            ps.setInt(1, id);
-            ps.executeUpdate();
-        }
-    }
-
-    public int getLatestJoinRequestId(String username, int groupId) throws SQLException {
-        try (Connection c = connect();
-             PreparedStatement ps = c.prepareStatement(
-                     "SELECT id FROM join_requests WHERE username=? AND group_id=? ORDER BY id DESC LIMIT 1")) {
-            ps.setString(1, username);
-            ps.setInt(2, groupId);
-            ResultSet rs = ps.executeQuery();
-            return rs.next() ? rs.getInt(1) : -1;
-        }
-    }
+//    public JoinReq readJoinRequest(int id) throws SQLException {
+//        try (Connection c = connect();
+//             PreparedStatement ps = c.prepareStatement(
+//                     "SELECT id, group_id, username, status FROM join_requests WHERE id=?")) {
+//            ps.setInt(1, id);
+//            ResultSet rs = ps.executeQuery();
+//            if (rs.next()) {
+//                return new JoinReq(rs.getInt(1), rs.getInt(2), rs.getString(3), rs.getString(4));
+//            }
+//            return null;
+//        }
+//    }
+//
+//    public void approveJoinRequest(int id) throws SQLException {
+//        try (Connection c = connect();
+//             PreparedStatement ps = c.prepareStatement("UPDATE join_requests SET status='APPROVED' WHERE id=?")) {
+//            ps.setInt(1, id);
+//            ps.executeUpdate();
+//        }
+//    }
+//
+//
+//
+//    public int getLatestJoinRequestId(String username, int groupId) throws SQLException {
+//        try (Connection c = connect();
+//             PreparedStatement ps = c.prepareStatement(
+//                     "SELECT id FROM join_requests WHERE username=? AND group_id=? ORDER BY id DESC LIMIT 1")) {
+//            ps.setString(1, username);
+//            ps.setInt(2, groupId);
+//            ResultSet rs = ps.executeQuery();
+//            return rs.next() ? rs.getInt(1) : -1;
+//        }
+//    }
 
     // --------------------------------------------------------------------
     // MEMBERS

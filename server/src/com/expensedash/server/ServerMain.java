@@ -109,22 +109,25 @@ public class ServerMain {
                 }
 
                 // ───────────────────────────────
-                // SEARCH GROUPS
                 // ───────────────────────────────
+// SEARCH GROUPS (global search)
+// ───────────────────────────────
                 if (line.startsWith("SEARCH_GROUP|")) {
                     String[] p = line.split("\\|", 2);
                     String query = p.length >= 2 ? p[1] : "";
                     try {
-                        List<Group> results = session.db.searchGroups(query);
+                        List<Group> results = session.db.searchGroups(query); // ✅ searches all groups globally
                         pw.println("SEARCH_BEGIN");
-                        for (Group g : results)
+                        for (Group g : results) {
                             pw.println("SEARCH_RESULT|" + g.id + "|" + g.name + "|" + g.category);
+                        }
                         pw.println("SEARCH_END");
                     } catch (Exception e) {
                         pw.println("SEARCH_ERR|" + e.getMessage());
                     }
                     continue;
                 }
+
 
                 // ───────────────────────────────
                 // JOIN GROUP (instant join)

@@ -14,21 +14,30 @@
     <left>
         <VBox spacing="10.0" prefWidth="300.0" style="-fx-background-color: #e0f2f1;">
             <children>
-                <Label text="My Groups"
+                <Label text="Search Groups"
                        style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #004d40;"/>
-                <TextField fx:id="groupSearch" promptText="Search groups..."/>
-                <Button text="+ Create New Group" onAction="#onCreateGroup"
-                        style="-fx-background-color: #009688; -fx-text-fill: white;"/>
 
-                <!-- FIXED SECTION -->
+                <TextField fx:id="groupSearch" promptText="Type group name to search..."
+                           style="-fx-background-color: #00796b; -fx-text-fill: black;"/>
+
+                <HBox spacing="8.0">
+                    <Button text="🔍 Search"
+                            onAction="#onSearchGroup"
+                            style="-fx-background-color: #00796b; -fx-text-fill: white;"/>
+                    <Button text="+ Create Group"
+                            onAction="#onCreateGroup"
+                            style="-fx-background-color: #009688; -fx-text-fill: white;"/>
+                </HBox>
+
                 <ListView fx:id="groupList">
                     <VBox.vgrow>ALWAYS</VBox.vgrow>
                 </ListView>
 
                 <Button text="Join Selected Group" onAction="#onJoinGroup"
-                        style="-fx-background-color: #00796b; -fx-text-fill: white;"/>
+                        style="-fx-background-color: #009688; -fx-text-fill: white;"/>
                 <Button text="🔄 Refresh Dashboard" onAction="#onRefresh"
                         style="-fx-background-color: #4caf50; -fx-text-fill: white;"/>
+
             </children>
             <padding>
                 <Insets top="16.0" right="12.0" bottom="16.0" left="12.0"/>

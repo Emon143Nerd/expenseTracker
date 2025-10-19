@@ -95,14 +95,23 @@ public class DashboardController implements Initializable {
         if (line.startsWith("SEARCH_RESULT|")) {
             String[] p = line.split("\\|", 4);
             if (p.length >= 4) {
-                String display = p[2];
+                int gid = Integer.parseInt(p[1]);  // group ID
+                String gName = p[2];               // group name
+                String category = p[3];            // category (optional, not used here)
+
                 Platform.runLater(() -> {
-                    if (!groupList.getItems().contains(display))
-                        groupList.getItems().add(display);
+                    // ✅ store ID→name for joining later
+                    groups.put(gid, gName);
+
+                    // ✅ display name if not already shown
+                    if (!groupList.getItems().contains(gName)) {
+                        groupList.getItems().add(gName);
+                    }
                 });
             }
             return;
         }
+
         if (line.equals("SEARCH_END")) {
             Platform.runLater(() -> {
                 if (!groupList.getItems().isEmpty())
@@ -112,15 +121,23 @@ public class DashboardController implements Initializable {
         }
 
         // ── Handle join and snapshot ──
-        if (line.startsWith("JOIN_OK|")) {
-            String[] p = line.split("\\|", 3);
-            String gName = (p.length >= 3) ? p[2] : "group";
+        if (line.startsWith("ADD_GROUP_OK|")) {
+            String[] p = line.split("\\|");
+            int gid = (p.length > 1) ? Integer.parseInt(p[1]) : -1;
             Platform.runLater(() -> {
-                showInfo("You joined \"" + gName + "\"");
-                if (net != null) net.send("REQUEST_SNAPSHOT");
+                net.send("REQUEST_SNAPSHOT");
+                // after short delay, select the new group by id
+                new Thread(() -> {
+                    try { Thread.sleep(500); } catch (InterruptedException ignored) {}
+                    Platform.runLater(() -> {
+                        String gName = groups.get(gid);
+                        if (gName != null) groupList.getSelectionModel().select(gName);
+                    });
+                }).start();
             });
             return;
         }
+
 
         if (line.equals("SNAPSHOT_BEGIN")) {
             groups.clear(); members.clear(); expenses.clear(); splits.clear();
@@ -254,6 +271,28 @@ public class DashboardController implements Initializable {
     }
 
     @FXML
+    private void onSearchGroup() {
+        if (net == null) {
+            showError("Not connected to the server.");
+            return;
+        }
+
+        String query = groupSearch.getText();
+        if (query == null || query.isBlank()) {
+            showError("Please enter a group name to search.");
+            return;
+        }
+
+        // Clear list before new results
+        Platform.runLater(() -> groupList.getItems().clear());
+
+        // Send to server for global search
+        net.send("SEARCH_GROUP|" + query.trim());
+    }
+
+
+
+    @FXML
     private void onJoinGroup() {
         try {
             String selected = groupList.getSelectionModel().getSelectedItem();
@@ -343,10 +382,13 @@ public class DashboardController implements Initializable {
 
             for (var en : sp.entrySet()) {
                 String name = members.get(en.getKey());
+                if (name == null || name.isBlank()) continue; // ✅ skip invalid/unnamed members
+
                 balanceByName.putIfAbsent(name, 0.0);
                 double delta = (e.payer.equals(name) ? e.amount : 0.0) - en.getValue();
                 balanceByName.put(name, balanceByName.get(name) + delta);
             }
+
         }
 
         totalPaid.setText(String.format("$%.2f", paid));
@@ -360,14 +402,17 @@ public class DashboardController implements Initializable {
         }
         balancesTable.setItems(rows);
 
+        // --- ✅ Fixed Pie Chart logic ---
         ObservableList<PieChart.Data> pie = FXCollections.observableArrayList();
-        int i = 0;
         for (var en : balanceByName.entrySet()) {
-            if (i++ >= 4) break;
-            pie.add(new PieChart.Data(en.getKey(), Math.abs(en.getValue())));
+            double value = Math.abs(en.getValue());
+            if (value > 0.01) { // skip nearly-zero balances
+                pie.add(new PieChart.Data(en.getKey(), value));
+            }
         }
         pieChart.setData(pie);
     }
+
 
     private int groupNameToId(String name) {
         for (var en : groups.entrySet())
